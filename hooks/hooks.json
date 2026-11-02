@@ -1,0 +1,27 @@
+{
+  "description": "Threat Driven Development: inject threat model status, validate .tc.json edits, and hold the turn open until code changes carry a threat delta or a declaration. No-ops in repos without .tdd/config.json.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/tdd\" claude-hook session-start", "timeout": 30 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/tdd\" claude-hook post-tool-use", "timeout": 30 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/tdd\" claude-hook stop", "timeout": 60 }
+        ]
+      }
+    ]
+  }
+}

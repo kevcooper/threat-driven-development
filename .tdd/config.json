@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "base_branch": "main",
+  "models": [
+    "threats/**/*.tc.json"
+  ],
+  "ignore": [
+    "docs/**",
+    "README.md",
+    "LICENSE*",
+    ".gitignore"
+  ],
+  "declaration": {
+    "min_length": 30
+  },
+  "policy": {
+    "red": "block-new",
+    "config_from_base": true
+  },
+  "hooks": {
+    "commit_msg": "warn",
+    "pre_push": "block",
+    "claude_stop": "block"
+  },
+  "checks": {
+    "action-no-interpolation": {
+      "run": "python3 -m unittest -q tests.test_security_controls.ActionInjectionTests",
+      "description": "PR text reaches the action only through env vars"
+    },
+    "policy-from-base": {
+      "run": "python3 -m unittest -q tests.test_status_ci.CITests.test_head_cannot_weaken_policy",
+      "description": "CI reads policy from the base branch"
+    },
+    "declaration-quality": {
+      "run": "python3 -m unittest -q tests.test_security_controls.DeclarationQualityTests tests.test_gate.GateTests.test_boilerplate_declaration_rejected tests.test_gate.GateTests.test_commit_trailer",
+      "description": "boilerplate declarations are rejected"
+    },
+    "checks-by-name-only": {
+      "run": "python3 -m unittest -q tests.test_security_controls.ChecksByNameTests",
+      "description": "check tags are names, never shell"
+    },
+    "hooks-do-not-run-checks": {
+      "run": "python3 -m unittest -q tests.test_security_controls.HooksDoNotRunChecksTests",
+      "description": "Claude hooks never execute repo-defined commands"
+    },
+    "ci-backstop": {
+      "run": "python3 -m unittest -q tests.test_security_controls.CIBackstopTests",
+      "description": "the PR workflow runs the gate with full history"
+    },
+    "formatting-not-delta": {
+      "run": "python3 -m unittest -q tests.test_gate.GateTests.test_formatting_only_change_is_not_a_delta",
+      "description": "reformatting a model does not satisfy the gate"
+    }
+  }
+}

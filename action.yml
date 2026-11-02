@@ -1,0 +1,71 @@
+name: Threat Driven Development
+description: Fail a pull request that changes code without a threat model delta or a justified no-threat-delta declaration, and run the checks that prove mitigations.
+author: Kevin Cooper
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  base-ref:
+    description: Ref to compare against. Defaults to the PR base branch, or the previous commit on push.
+    required: false
+    default: ""
+  run-checks:
+    description: Run the checks linked to mitigations (true/false).
+    required: false
+    default: "true"
+  trust-head-config:
+    description: Read policy from the PR head instead of the base branch. Leave false unless you know why.
+    required: false
+    default: "false"
+  working-directory:
+    description: Repository root, if not the workspace root.
+    required: false
+    default: "."
+
+outputs:
+  passed:
+    description: '"true" when the gate passed.'
+    value: ${{ steps.tdd.outputs.passed }}
+
+runs:
+  using: composite
+  steps:
+    - id: tdd
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        # Untrusted text is passed through the environment, never interpolated into the script.
+        TDD_PR_BODY: ${{ github.event.pull_request.body }}
+        TDD_INPUT_BASE: ${{ inputs.base-ref }}
+        TDD_PR_BASE: ${{ github.event.pull_request.base.ref }}
+        TDD_PUSH_BEFORE: ${{ github.event.before }}
+        TDD_RUN_CHECKS: ${{ inputs.run-checks }}
+        TDD_TRUST_HEAD: ${{ inputs.trust-head-config }}
+        TDD_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --no-tags --quiet --unshallow origin || git fetch --no-tags --quiet --deepen=500 origin
+        fi
+        if [ -n "$TDD_INPUT_BASE" ]; then
+          base="$TDD_INPUT_BASE"
+        elif [ -n "$TDD_PR_BASE" ]; then
+          git fetch --no-tags --quiet origin "+refs/heads/${TDD_PR_BASE}:refs/remotes/origin/${TDD_PR_BASE}"
+          base="origin/${TDD_PR_BASE}"
+        elif [ -n "$TDD_PUSH_BEFORE" ] && [ "$TDD_PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+          base="$TDD_PUSH_BEFORE"
+        else
+          echo "tdd: no base ref (first push?); nothing to compare" >> "$GITHUB_STEP_SUMMARY"
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        args=(ci --base "$base" --pr-body-env TDD_PR_BODY)
+        [ "$TDD_RUN_CHECKS" = "true" ] || args+=(--no-checks)
+        [ "$TDD_TRUST_HEAD" = "true" ] && args+=(--trust-head-config)
+        set +e
+        python3 "$TDD_ACTION_PATH/bin/tdd" "${args[@]}"
+        code=$?
+        set -e
+        if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+        exit "$code"
