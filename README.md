@@ -43,9 +43,11 @@ or use a commit trailer `No-Threat-Delta: <reason>`, or put that line in the PR 
 
 ### Claude Code plugin
 
+It is published in the [kevcooper marketplace](https://github.com/kevcooper/claude-plugins):
+
 ```
-/plugin marketplace add kevcooper/threat-driven-development
-/plugin install tdd@threat-driven-development
+/plugin marketplace add kevcooper/claude-plugins
+/plugin install tdd@kevcooper
 ```
 
 The plugin is inert in repos without `.tdd/config.json`, so it is safe to install globally. It adds:
