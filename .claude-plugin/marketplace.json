@@ -1,0 +1,12 @@
+{
+  "name": "threat-driven-development",
+  "owner": { "name": "Kevin Cooper" },
+  "plugins": [
+    {
+      "name": "tdd",
+      "source": "./",
+      "description": "Threat Driven Development: threat model deltas as the security equivalent of failing tests.",
+      "version": "0.1.0"
+    }
+  ]
+}

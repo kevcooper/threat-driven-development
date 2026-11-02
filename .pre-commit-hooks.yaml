@@ -1,0 +1,21 @@
+# For teams using the pre-commit framework (https://pre-commit.com):
+#   repos:
+#     - repo: https://github.com/kevcooper/threat-driven-development
+#       rev: v0.1.0
+#       hooks:
+#         - id: tdd-commit-msg
+#         - id: tdd-pre-push
+- id: tdd-commit-msg
+  name: threat delta or declaration (commit)
+  entry: tdd git-hook commit-msg
+  language: python
+  stages: [commit-msg]
+  pass_filenames: false
+  always_run: true
+- id: tdd-pre-push
+  name: threat delta or declaration (branch)
+  entry: tdd git-hook pre-push
+  language: python
+  stages: [pre-push]
+  pass_filenames: false
+  always_run: true
