@@ -35,9 +35,11 @@ DEFAULTS: Dict[str, Any] = {
         # block | warn | off: models must be in the exact form the Threat Composer editor
         # writes, so opening them in the VS Code extension doesn't rewrite them.
         "format": "block",
-        # block | warn | off: a mitigation must be mitigationResolved exactly when its checks
-        # pass, so the status flip lands in the same change as the implementation.
-        "mitigation_status": "block",
+        # block | warn | off: statuses must track progress. A mitigation is resolved
+        # exactly when its checks pass, and a threat is resolved once it is green or
+        # handled under an explicit risk strategy tag. `tdd sync` makes the flips, in
+        # the same change as the work.
+        "status_sync": "block",
     },
     "hooks": {
         "commit_msg": "warn",  # off | warn | block
@@ -46,6 +48,8 @@ DEFAULTS: Dict[str, Any] = {
     },
     # name -> {"run": "<shell command>", "timeout": seconds, "description": "..."}
     "checks": {},
+    # Lint rule codes to skip (see `tdd lint --rules`), e.g. ["TDD130", "TDD131"].
+    "lint": {"disable": []},
 }
 
 
@@ -98,8 +102,8 @@ class Config:
         return mode if mode in ("block", "warn", "off") else "block"
 
     @property
-    def mitigation_status_policy(self) -> str:
-        mode = str(self.data["policy"].get("mitigation_status", "block")).lower()
+    def status_sync_policy(self) -> str:
+        mode = str(self.data["policy"].get("status_sync", "block")).lower()
         return mode if mode in ("block", "warn", "off") else "block"
 
     @property

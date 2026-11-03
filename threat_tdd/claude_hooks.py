@@ -93,19 +93,19 @@ def session_start(payload: Dict[str, Any]) -> int:
 
     loaded = load_all(root, gitutil.WORKTREE, cfg.models)
     states = status.evaluate(loaded.models, checks_mod.load_cache(root), cfg.checks.keys())
-    c = status.counts(states)
     base = gate_mod.default_base(root, cfg)
     result = gate_mod.run(root, cfg, base, gitutil.WORKTREE)
 
     lines = [
         "Threat Driven Development is active in this repository.",
         f"Threat model: {len(loaded.models)} file(s) matching {', '.join(cfg.models)}; "
-        f"{len(states)} threats: {c['red']} red, {c['unverified']} unverified, {c['green']} green, {c['waived']} waived.",
+        f"{status.summary(states)}.",
         f"Merge gate for this branch vs {cfg['base_branch']}: {'PASS' if result.passed else 'FAIL'} ({result.reason}).",
         "Rule: every change that reaches main carries a threat model delta (.tc.json, AWS Threat Composer format) "
         "or a justified no-threat-delta declaration. Work threat-first: when a change adds an input, output, "
         "dependency, data store, permission or trust boundary, add the threat statement (red), then the mitigation, "
-        "then a check that proves it (green).",
+        "then a check that proves it (green). A threat is resolved only with an explicit risk strategy tag "
+        "(risk:mitigate, risk:accept, risk:transfer or risk:avoid); `tdd sync` moves statuses along with the work.",
         f"CLI: {TDD_BIN} (status | gate | add-threat | add-mitigation | link | declare | check). "
         "Use the threat-driven-development skill for the details.",
     ]

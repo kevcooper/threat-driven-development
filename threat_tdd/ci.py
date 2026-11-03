@@ -10,15 +10,15 @@ from threat_tdd import checks as checks_mod
 from threat_tdd import config as config_mod
 from threat_tdd import gate as gate_mod
 from threat_tdd import gitutil, status
-from threat_tdd.model import NOT_CANONICAL, Issue, load_all, validate
+from threat_tdd.model import Issue, load_all, validate
 
-FORMAT_MARKERS = (NOT_CANONICAL, "Threat Composer will rewrite", "markup Threat Composer")
+FORMAT_CODES = ("TC003", "TC004")
 
 
 def _apply_format_policy(issues: List[Issue], policy: str) -> List[Issue]:
     out = []
     for i in issues:
-        if i.level == "warning" and i.message.startswith(FORMAT_MARKERS):
+        if i.level == "warning" and i.code in FORMAT_CODES:
             if policy == "off":
                 continue
             if policy == "block":
@@ -100,20 +100,21 @@ def run(
         if policy == "block" or (s.path, s.id) in new_keys or s.failing_checks:
             blocking.append(s)
 
-    if run_checks and cfg.mitigation_status_policy != "off":
-        level = "error" if cfg.mitigation_status_policy == "block" else "warning"
+    if cfg.status_sync_policy != "off":
+        level = "error" if cfg.status_sync_policy == "block" else "warning"
         outcomes = {k: v.outcome for k, v in check_results.items()}
-        for mi in status.mitigation_status_issues(head_models.models, outcomes):
-            issues.append(Issue(mi.path, level, mi.message))
+        for si in status.status_issues(head_models.models, outcomes, cfg.checks.keys()):
+            if si.kind != "progress":  # in-progress is informational
+                issues.append(Issue(si.path, level, si.message, "STATUS"))
 
-    notes = status.inconsistencies(states)
+    notes: List[str] = []
     passed = result.passed and not [i for i in issues if i.level == "error"] and not blocking
     return CIResult(passed, result, states, blocking, issues, check_results, note, notes)
 
 
 def markdown(res: CIResult) -> str:
     g = res.gate
-    icon = {"green": "🟢", "unverified": "🟡", "red": "🔴", "waived": "⚪"}
+    icon = {"green": "🟢", "unverified": "🟡", "red": "🔴", "handled": "🔵", "dismissed": "⚪"}
     out = [f"## Threat Driven Development: {'✅ pass' if res.passed else '❌ fail'}", ""]
     out.append(f"**Gate:** {'pass' if g.passed else 'fail'}: {g.reason}")
     out.append(f"<sub>{res.config_note}</sub>")
@@ -131,8 +132,7 @@ def markdown(res: CIResult) -> str:
             out.append(f"- {'✅' if d.valid else '❌'} `{d.origin}`: {d.text}" + (f" ({d.problem})" if d.problem else ""))
         out.append("")
     if res.states:
-        c = status.counts(res.states)
-        out.append(f"### Threats: {c['red']} red, {c['unverified']} unverified, {c['green']} green, {c['waived']} waived")
+        out.append("### " + status.summary(res.states).capitalize())
         out.append("| | threat | state | statement |")
         out.append("|---|---|---|---|")
         blocking = {(s.path, s.id) for s in res.blocking}

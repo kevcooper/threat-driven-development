@@ -9,8 +9,11 @@ TDD conventions layered on top of Threat Composer:
   - A mitigation is linked to a *check* with a tag ``check:<name>``, where
     ``<name>`` is a key in ``.tdd/config.json`` -> ``checks``. Tags are
     editable in the Threat Composer UI, so humans can maintain the link too.
-  - A threat is waived (accepted risk) by setting status
-    ``threatResolvedNotUseful`` and explaining why in its ``Comments`` metadata.
+  - A threat's risk handling strategy is an explicit tag: ``risk:mitigate``,
+    ``risk:accept``, ``risk:transfer`` or ``risk:avoid``. A threat is not resolved
+    without exactly one. Accept, transfer and avoid carry a ``Comments`` reason.
+  - ``threatResolvedNotUseful`` means "not applicable" (dismissed), with a reason.
+  - Statuses track progress; see ``status.py``.
 """
 
 from __future__ import annotations
@@ -32,8 +35,17 @@ MITIGATION_STATUSES = {
     "mitigationResolved",
     "mitigationResolvedWillNotAction",
 }
-WAIVED = "threatResolvedNotUseful"
+NOT_USEFUL = "threatResolvedNotUseful"
 WONT_DO = "mitigationResolvedWillNotAction"
+RISK_TAG_PREFIX = "risk:"
+STRATEGIES = ("mitigate", "accept", "transfer", "avoid")
+STRATEGY_NOTE = {"accept": "Risk accepted", "transfer": "Risk transferred", "avoid": "Risk avoided"}
+PROGRESS = {
+    "identified": "mitigationIdentified",
+    "in-progress": "mitigationInProgress",
+    "resolved": "mitigationResolved",
+    "will-not-action": "mitigationResolvedWillNotAction",
+}
 
 STRIDE = set(canonical.STRIDE)
 MAX_CHECK_NAME = canonical.TAG_MAX - len(CHECK_TAG_PREFIX)
@@ -266,14 +278,48 @@ class Model:
         if tag not in tags:
             tags.append(tag)
 
-    def waive(self, threat: Dict[str, Any], reason: str) -> None:
-        threat["status"] = WAIVED
-        existing = metadata_value(threat, "Comments")
-        note = f"Accepted risk: {clean_text('reason', reason)}"
+    @staticmethod
+    def _append_comment(item: Dict[str, Any], note: str) -> None:
+        existing = metadata_value(item, "Comments")
         text = f"{existing}\n\n{note}".strip() if existing else note
         if canonical._u16len(text) > canonical.FREE_TEXT_SMALL_MAX:
             raise ValueError(f"Comments would exceed Threat Composer's {canonical.FREE_TEXT_SMALL_MAX} character limit")
-        set_metadata(threat, "Comments", text)
+        set_metadata(item, "Comments", text)
+
+    def set_strategy(self, threat: Dict[str, Any], strategy: str, reason: Optional[str] = None) -> None:
+        """Record the risk handling strategy as the threat's single risk:<strategy> tag.
+
+        accept / transfer / avoid need a reason, recorded in Comments, and resolve the
+        threat. mitigate leaves the status for `tdd sync` to set once the checks pass.
+        """
+        strategy = strategy.lower()
+        if strategy not in STRATEGIES:
+            raise ValueError(f"strategy must be one of {', '.join(STRATEGIES)}")
+        if strategy != "mitigate":
+            if not reason or not reason.strip():
+                raise ValueError(f"risk:{strategy} needs a reason")
+            self._append_comment(threat, f"{STRATEGY_NOTE[strategy]}: {clean_text('reason', reason)}")
+            threat["status"] = "threatResolved"
+        tags = [t for t in threat.get("tags") or [] if not str(t).lower().startswith(RISK_TAG_PREFIX)]
+        threat["tags"] = tags + [RISK_TAG_PREFIX + strategy]
+
+    def waive(self, threat: Dict[str, Any], reason: str) -> None:
+        """Accept the risk (kept for compatibility; same as set_strategy(accept))."""
+        self.set_strategy(threat, "accept", reason)
+
+    def dismiss(self, threat: Dict[str, Any], reason: str) -> None:
+        """Not applicable to this system: Threat Composer's 'Not Useful' status."""
+        self._append_comment(threat, f"Not applicable: {clean_text('reason', reason)}")
+        threat["status"] = NOT_USEFUL
+
+    def set_progress(self, mitigation: Dict[str, Any], progress: str, reason: Optional[str] = None) -> None:
+        if progress not in PROGRESS:
+            raise ValueError(f"progress must be one of {', '.join(PROGRESS)}")
+        if progress == "will-not-action":
+            if not reason or not reason.strip():
+                raise ValueError("will-not-action needs a reason")
+            self._append_comment(mitigation, f"Will not action: {clean_text('reason', reason)}")
+        mitigation["status"] = PROGRESS[progress]
 
     def canonical_text(self) -> str:
         """The file text Threat Composer would write for this model."""
@@ -357,83 +403,20 @@ class Issue:
     path: str
     level: str  # "error" | "warning"
     message: str
+    code: str = ""
 
     def __str__(self) -> str:
         return f"{self.path}: {self.level}: {self.message}"
 
 
 def validate(model: Model, known_checks: Optional[Iterable[str]] = None) -> List[Issue]:
-    """Threat Composer's own schema (errors mean the editor refuses the file), TDD's
-    referential checks, and whether the file is in Threat Composer's canonical form."""
-    issues: List[Issue] = []
+    """The core lint rules: Threat Composer compatibility, references and strategy rules.
 
-    def err(msg: str) -> None:
-        issues.append(Issue(model.path, "error", msg))
+    Used by the gate, the hooks and CI. ``tdd lint`` runs the full rule set.
+    """
+    from threat_tdd import lint  # lint imports this module
 
-    def warn(msg: str) -> None:
-        issues.append(Issue(model.path, "warning", msg))
-
-    canon, report = canonical.canonicalize(model.data)
-    for e in report.errors:
-        err(f"Threat Composer would refuse this file: {e}")
-    for u in report.uncertain:
-        warn(f"markup Threat Composer will rewrite unpredictably; rephrase: {u}")
-    for c in report.changes:
-        warn(f"Threat Composer will rewrite this text on open (rephrase, or run tdd fmt): {c}")
-    if report.errors:
-        return issues
-
-    def unique(items: List[Dict[str, Any]], kind: str) -> set:
-        ids, nums = set(), set()
-        for item in items:
-            iid = item.get("id")
-            if iid in ids:
-                err(f"duplicate {kind} id {iid}")
-            ids.add(iid)
-            num = item.get("numericId")
-            if num in nums:
-                err(f"duplicate {kind} numericId {num}")
-            nums.add(num)
-        return ids
-
-    threat_ids = unique(model.threats, "threat")
-    mitigation_ids = unique(model.mitigations, "mitigation")
-    assumption_ids = unique(model.assumptions, "assumption")
-
-    for t in model.threats:
-        label = threat_label(t)
-        if not str(t.get("statement") or "").strip() and not str(t.get("threatAction") or "").strip():
-            err(f"{label} has no statement")
-        if t.get("status") == WAIVED and not str(metadata_value(t, "Comments") or "").strip():
-            err(f"{label} is marked not-useful (waived) but has no Comments explaining why")
-
-    known = set(known_checks) if known_checks is not None else None
-    for m in model.mitigations:
-        label = mitigation_label(m)
-        if not str(m.get("content") or "").strip():
-            err(f"{label} has no content")
-        if known is not None:
-            for name in check_names(m):
-                if name not in known:
-                    warn(f"{label} references check '{name}' which is not defined in .tdd/config.json")
-
-    for l in model.mitigation_links:
-        if l.get("mitigationId") not in mitigation_ids:
-            err(f"mitigationLink references unknown mitigation {l.get('mitigationId')}")
-        if l.get("linkedId") not in threat_ids:
-            err(f"mitigationLink references unknown threat {l.get('linkedId')}")
-    for l in model.assumption_links:
-        if l.get("assumptionId") not in assumption_ids:
-            err(f"assumptionLink references unknown assumption {l.get('assumptionId')}")
-        if l.get("linkedId") not in threat_ids | mitigation_ids:
-            err(f"assumptionLink references unknown item {l.get('linkedId')}")
-
-    if canon is not None and model.text is not None and canonical.dumps(canon) != model.text:
-        warn(NOT_CANONICAL)
-    return issues
-
-
-NOT_CANONICAL = (
-    "not in Threat Composer's canonical format, so opening it in the VS Code extension will "
-    "rewrite it; run `tdd fmt`"
-)
+    return [
+        Issue(i.path, i.level, (f"{i.where}: " if i.where else "") + i.message, i.code)
+        for i in lint.lint_model(model, known_checks, rules=lint.CORE)
+    ]

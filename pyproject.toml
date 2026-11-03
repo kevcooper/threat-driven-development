@@ -18,3 +18,6 @@ Repository = "https://github.com/kevcooper/threat-driven-development"
 
 [tool.setuptools]
 packages = ["threat_tdd"]
+
+[tool.setuptools.package-data]
+threat_tdd = ["schemas/*.json", "schemas/*.md", "schemas/LICENSE-*"]

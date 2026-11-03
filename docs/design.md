@@ -27,13 +27,24 @@ treats as code.
   mirrors TDD (you can't merge a red test) without making adoption impossible on a repo with an
   existing backlog of unmitigated threats.
 
-## Mitigation status follows the checks
+## Statuses track progress; strategy tags record the decision
 
-Threat Composer gives mitigations a status, and TDD gives it one meaning: `mitigationResolved`
-means implemented, and implemented means the checks pass. The flip happens in the same change as
-the code, never as a later bookkeeping commit. `tdd check --resolve` makes the edit, and CI
-(`policy.mitigation_status`, default `block`) fails when a passing mitigation is still
-`mitigationIdentified` or a resolved one's check fails.
+Threat Composer's status fields carry progress, and TDD gives each status one meaning:
+- **Mitigations:** `mitigationInProgress` means its check exists and fails. `mitigationResolved`
+  means the checks pass. `mitigationResolvedWillNotAction` needs a reason.
+- **Threats:** `threatResolved` means green or handled under exactly one risk strategy tag
+  (`risk:mitigate`, `risk:accept`, `risk:transfer`, `risk:avoid`). Accept, transfer and avoid
+  need a written reason. This mirrors Threat Composer's own definition of Resolved ("all agreed
+  risk response actions (mitigation, transfer, avoidance, risk acceptance) have been completed").
+- **Not Useful** means not applicable, also with a reason. v0's `tdd waive` used it for accepted
+  risk, which contradicted that definition. `waive` now records `risk:accept`.
+
+Tags are used for the strategy because they show and edit in the Threat Composer UI and survive
+its strict schema. A `custom:` metadata key would also survive, but it's less visible.
+
+`tdd sync` updates statuses from the check results, and the change lands in the same commit as
+the code. CI (`policy.status_sync`, default `block`) fails when a status lags behind the checks
+or claims more than they prove. In-progress is informational and never fails CI.
 
 The status also sharpens red and green. A failing check on a planned mitigation is expected (it is
 the test written before the code) and doesn't override another verified mitigation. A failing
@@ -75,6 +86,18 @@ faith. The reviewer still has to read it. The CI summary shows every declaration
 block and evaluates the whole branch against the merge base. Both can be bypassed with
 `--no-verify`, which is why CI exists. Known gap: `commit-msg` cannot see an `--amend`'s full
 change, only the newly staged part. Pre-push and CI cover it.
+
+## Official schema and lint
+
+The official `threat-composer-v1.schema.json` is vendored, and `jsonschema_lite.py` validates
+against it with the standard library. That validator covers every keyword the schema uses and
+raises on any it doesn't support, so a schema update can't be silently half-checked. A test
+compares the schema's property order, length limits and enums with `canonical.py`, so the two
+can't drift apart.
+
+The schema is a little stricter than the editor (it rejects `workspace` and `displayedStatement`,
+which the editor accepts and drops). It is also looser in places the editor enforces at load
+(exact 36-character link ids). Lint reports both, under `TC001` and `TC002`.
 
 ## Matching the Threat Composer editor byte for byte
 

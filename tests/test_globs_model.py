@@ -55,7 +55,7 @@ class ModelTests(unittest.TestCase):
         joined = "\n".join(str(i) for i in validate(model, ["other"]))
         self.assertIn(f"duplicate threat id {a}", joined)
         self.assertIn("no statement", joined)
-        self.assertIn("no Comments", joined)
+        self.assertIn("without a Comments reason", joined)
         self.assertIn(f"unknown threat {b}", joined)
         self.assertIn("references check 'nope'", joined)
 

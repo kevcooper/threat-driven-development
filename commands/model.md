@@ -12,13 +12,16 @@ Use the `threat-driven-development` skill. The CLI is `python3 "${CLAUDE_PLUGIN_
 2. Delegate a review to the `threat-reviewer` agent, passing it the list of changed files and the
    threat model path(s). Ask it for candidate threats in Threat Composer grammar, existing threats
    the change affects, and mitigations with a concrete check for each.
-3. For each threat you accept, add it with `tdd add-threat` (it starts red). Then add the
+3. For each threat you accept, add it with `tdd add-threat --strategy <mitigate|accept|transfer|avoid>`
+   (it starts red). Choose accept, transfer or avoid only with the user's agreement, and give a
+   specific reason. For a mitigated threat, add the
    mitigation with `tdd add-mitigation --threat T-n --check <name>`. If the check does not exist,
    write it (a test, a lint rule, a config assertion) and register it with `tdd add-check`.
 4. Keep threat and mitigation text free of `<`, `>` and `&` (Threat Composer strips or escapes
    them). Run `tdd status --run-checks`. For each mitigation the change implements, run
-   `tdd check --resolve` so its status flips to `mitigationResolved` in the same commit as the code. New threats should end green, or stay red with a clear note to the
-   user about what is still missing. Never mark a threat resolved or waived to make the gate pass.
+   `tdd sync` so statuses move with the code, in the same commit. Then run `tdd lint` and fix its
+   errors. New threats should end green or handled, or stay red with a clear note to the user
+   about what is still missing. Never set a resolved status or strategy just to make the gate pass.
 5. If after honest review the change has no security-relevant delta, say why and suggest `/tdd:declare`
    instead of inventing threats.
 

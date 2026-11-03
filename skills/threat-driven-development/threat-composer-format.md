@@ -128,8 +128,13 @@ leave nothing to rewrite, `tdd` writes:
 - **Mitigation to check:** tag `check:<name>`, where `<name>` is a key under `checks` in
   `.tdd/config.json` (at most 24 characters, since tags are capped at 30). Mitigations never hold
   shell commands.
-- **Waiver:** status `threatResolvedNotUseful` plus a `Comments` metadata entry explaining the
-  accepted risk. Validation fails without the comment.
+- **Risk strategy:** exactly one tag `risk:mitigate`, `risk:accept`, `risk:transfer` or
+  `risk:avoid` before a threat is `threatResolved`. The last three need a `Comments` reason.
+- **Not applicable:** status `threatResolvedNotUseful` plus a `Comments` reason.
+- **Progress:** `mitigationInProgress` while a check fails, `mitigationResolved` once it passes,
+  `threatResolved` once green or handled. `tdd sync` maintains these.
+- **Schema:** the official JSON Schema ships with the plugin (`tdd schema`). `tdd lint` checks
+  against it.
 - **IDs:** `id` is a UUID and must be unique. `numericId` is the human label (`T-4`, `M-2`). The CLI
   accepts either, or a unique id prefix.
 - **Statement grammar:** `A <source> <prerequisites> can <action>, which leads to <impact>,

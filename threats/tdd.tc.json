@@ -22,6 +22,28 @@
   ],
   "mitigations": [
     {
+      "id": "04250ef3-6c8d-42e3-a528-f150e4829f1e",
+      "numericId": 11,
+      "displayOrder": 11,
+      "metadata": [],
+      "tags": [
+        "check:official-schema"
+      ],
+      "content": "tdd lint and tdd validate check models against the vendored official Threat Composer JSON Schema and the editor's own stricter rules, in hooks and in CI.",
+      "status": "mitigationResolved"
+    },
+    {
+      "id": "f2cdb45c-211b-435c-acf9-300e4c001890",
+      "numericId": 10,
+      "displayOrder": 10,
+      "metadata": [],
+      "tags": [
+        "check:risk-strategy-tags"
+      ],
+      "content": "A threat is resolved only under exactly one risk strategy tag; accept, transfer and avoid require a written reason. Lint, status and CI treat anything else as red.",
+      "status": "mitigationResolved"
+    },
+    {
       "id": "801b0dff-ee75-4b34-884f-a732c4c84cc7",
       "numericId": 9,
       "displayOrder": 9,
@@ -168,9 +190,81 @@
     {
       "mitigationId": "801b0dff-ee75-4b34-884f-a732c4c84cc7",
       "linkedId": "5e1a314b-10a2-4391-b34e-8f76021141bb"
+    },
+    {
+      "mitigationId": "f2cdb45c-211b-435c-acf9-300e4c001890",
+      "linkedId": "620bf8d7-a96e-4ed2-896f-be6adeef1984"
+    },
+    {
+      "mitigationId": "04250ef3-6c8d-42e3-a528-f150e4829f1e",
+      "linkedId": "9289c4fd-4163-46c1-b619-d80d180b409a"
     }
   ],
   "threats": [
+    {
+      "id": "9289c4fd-4163-46c1-b619-d80d180b409a",
+      "numericId": 11,
+      "displayOrder": 11,
+      "metadata": [
+        {
+          "key": "STRIDE",
+          "value": [
+            "D"
+          ]
+        },
+        {
+          "key": "Priority",
+          "value": "Medium"
+        }
+      ],
+      "tags": [
+        "risk:mitigate"
+      ],
+      "threatSource": "contributor",
+      "prerequisites": "who edits a threat model by hand or with an agent",
+      "threatAction": "commit a file that the Threat Composer editor refuses to open",
+      "threatImpact": "a threat model nobody can review in the editor",
+      "impactedGoal": [
+        "availability"
+      ],
+      "impactedAssets": [
+        "threat model"
+      ],
+      "statement": "A contributor who edits a threat model by hand or with an agent can commit a file that the Threat Composer editor refuses to open, which leads to a threat model nobody can review in the editor, resulting in reduced availability of threat model",
+      "status": "threatResolved"
+    },
+    {
+      "id": "620bf8d7-a96e-4ed2-896f-be6adeef1984",
+      "numericId": 10,
+      "displayOrder": 10,
+      "metadata": [
+        {
+          "key": "STRIDE",
+          "value": [
+            "R"
+          ]
+        },
+        {
+          "key": "Priority",
+          "value": "High"
+        }
+      ],
+      "tags": [
+        "risk:mitigate"
+      ],
+      "threatSource": "contributor",
+      "prerequisites": "with edit access to the threat model",
+      "threatAction": "mark a threat resolved without recording whether its risk was mitigated, accepted, transferred or avoided",
+      "threatImpact": "unowned residual risk that reviewers assume is mitigated",
+      "impactedGoal": [
+        "integrity"
+      ],
+      "impactedAssets": [
+        "threat model"
+      ],
+      "statement": "A contributor with edit access to the threat model can mark a threat resolved without recording whether its risk was mitigated, accepted, transferred or avoided, which leads to unowned residual risk that reviewers assume is mitigated, resulting in reduced integrity of threat model",
+      "status": "threatResolved"
+    },
     {
       "id": "5e1a314b-10a2-4391-b34e-8f76021141bb",
       "numericId": 9,
@@ -188,7 +282,9 @@
           "value": "Medium"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "contributor",
       "prerequisites": "who edits the threat model",
       "threatAction": "mark a mitigation resolved that was never implemented, or leave an implemented one marked identified",
@@ -200,7 +296,7 @@
         "threat model"
       ],
       "statement": "A contributor who edits the threat model can mark a mitigation resolved that was never implemented, or leave an implemented one marked identified, which leads to reviewers trusting a threat model that misstates what is actually mitigated, resulting in reduced integrity of threat model",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     },
     {
       "id": "d0f313cf-8ae0-4e9b-beef-b02cef7d4ca3",
@@ -218,7 +314,9 @@
           "value": "Medium"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "reviewer",
       "prerequisites": "who opens a threat model in the Threat Composer VS Code editor",
       "threatAction": "cause the editor to silently rewrite the file, stripping angle-bracket text and reordering keys",
@@ -230,7 +328,7 @@
         "threat model"
       ],
       "statement": "A reviewer who opens a threat model in the Threat Composer VS Code editor can cause the editor to silently rewrite the file, stripping angle-bracket text and reordering keys, which leads to lost threat model content and noisy diffs that hide real changes, resulting in reduced integrity of threat model",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     },
     {
       "id": "68ec81e8-4f09-4395-85bc-7ae753375867",
@@ -249,7 +347,9 @@
           "value": "Medium"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "coding agent",
       "prerequisites": "that is blocked by the Stop hook",
       "threatAction": "write a vague declaration or reformat the threat model to satisfy the gate",
@@ -261,7 +361,7 @@
         "threat review process"
       ],
       "statement": "A coding agent that is blocked by the Stop hook can write a vague declaration or reformat the threat model to satisfy the gate, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     },
     {
       "id": "b921a1a8-c760-4292-9bdb-25a1d07daf27",
@@ -279,7 +379,9 @@
           "value": "Medium"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "developer",
       "prerequisites": "who pushes with --no-verify or without the hooks installed",
       "threatAction": "merge code that carries no threat delta or declaration",
@@ -291,7 +393,7 @@
         "threat review process"
       ],
       "statement": "A developer who pushes with --no-verify or without the hooks installed can merge code that carries no threat delta or declaration, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     },
     {
       "id": "fc8f6744-0597-467f-a33d-66869901da00",
@@ -309,7 +411,9 @@
           "value": "High"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "malicious repository",
       "prerequisites": "that a developer opens with the plugin installed",
       "threatAction": "define check commands that the Claude Code hooks run automatically",
@@ -322,7 +426,7 @@
         "developer workstation"
       ],
       "statement": "A malicious repository that a developer opens with the plugin installed can define check commands that the Claude Code hooks run automatically, which leads to code execution on the developer workstation, resulting in reduced confidentiality and/or integrity of developer workstation",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     },
     {
       "id": "e641f765-fb37-4c0b-a2df-f6d9e352729c",
@@ -340,7 +444,9 @@
           "value": "High"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "threat model author",
       "prerequisites": "who can edit a .tc.json file",
       "threatAction": "embed shell commands that CI runs as a check",
@@ -352,7 +458,7 @@
         "CI runner"
       ],
       "statement": "A threat model author who can edit a .tc.json file can embed shell commands that CI runs as a check, which leads to arbitrary code execution in CI, resulting in reduced integrity of CI runner",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     },
     {
       "id": "a6e2a565-f217-4e2c-8ecb-a05f5f3650f8",
@@ -371,7 +477,9 @@
           "value": "Medium"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "contributor",
       "prerequisites": "who wants to skip threat review",
       "threatAction": "submit a boilerplate no-threat-delta declaration",
@@ -383,7 +491,7 @@
         "threat review process"
       ],
       "statement": "A contributor who wants to skip threat review can submit a boilerplate no-threat-delta declaration, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     },
     {
       "id": "15e7595a-578a-4e03-a1d9-1e20938f5881",
@@ -402,7 +510,9 @@
           "value": "High"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "contributor",
       "prerequisites": "who can open a pull request",
       "threatAction": "weaken .tdd/config.json policy in the same change it is gated on",
@@ -414,7 +524,7 @@
         "threat review process"
       ],
       "statement": "A contributor who can open a pull request can weaken .tdd/config.json policy in the same change it is gated on, which leads to code merging without a threat review, resulting in reduced integrity of threat review process",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     },
     {
       "id": "97dfd35c-0a0a-439f-8404-8cbed6980cfc",
@@ -433,7 +543,9 @@
           "value": "High"
         }
       ],
-      "tags": [],
+      "tags": [
+        "risk:mitigate"
+      ],
       "threatSource": "pull request author",
       "prerequisites": "who can edit the PR title or description",
       "threatAction": "inject shell syntax that the gate's workflow step evaluates",
@@ -447,7 +559,7 @@
         "repository token"
       ],
       "statement": "A pull request author who can edit the PR title or description can inject shell syntax that the gate's workflow step evaluates, which leads to arbitrary code execution in CI with the workflow token, resulting in reduced integrity and/or confidentiality of CI runner and repository token",
-      "status": "threatIdentified"
+      "status": "threatResolved"
     }
   ]
 }

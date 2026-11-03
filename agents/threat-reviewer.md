@@ -42,8 +42,13 @@ For each, the Threat Composer grammar fields and a ready-to-run command:
 ```
 tdd add-threat --source "<threat source>" --prerequisites "<prerequisites>" \
   --action "<threat action>" --impact "<threat impact>" \
-  --goal <confidentiality|integrity|availability> --asset "<asset>" --stride <letters> --priority <High|Medium|Low>
+  --goal <confidentiality|integrity|availability> --asset "<asset>" --stride <letters> --priority <High|Medium|Low> \
+  --strategy <mitigate|accept|transfer|avoid>
 ```
+Recommend a risk handling strategy for each threat. Default to `mitigate`. Propose `accept`,
+`transfer` or `avoid` only with a specific reason the user can approve (who carries a transferred
+risk, why residual risk is acceptable, what design change avoids it). Keep all text free of `<`,
+`>` and `&`, which Threat Composer strips or escapes.
 
 ### Proposed mitigations and checks
 For each mitigation: the content, which threats it covers, and a concrete check that would fail if
@@ -52,7 +57,8 @@ the check already exists in `.tdd/config.json` or must be written, and give the
 `tdd add-mitigation` / `tdd add-check` commands.
 
 ### Affected existing threats
-Threats whose statement, status, or mitigations this change invalidates, with the reason.
+Threats whose statement, status, strategy or mitigations this change invalidates, with the reason.
+Include resolved threats or mitigations the change could regress.
 
 ### If no delta
 A specific justification suitable for `tdd declare`, naming what the change does and why attack
