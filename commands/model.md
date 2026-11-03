@@ -16,7 +16,8 @@ Use the `threat-driven-development` skill. The CLI is `python3 "${CLAUDE_PLUGIN_
    mitigation with `tdd add-mitigation --threat T-n --check <name>`. If the check does not exist,
    write it (a test, a lint rule, a config assertion) and register it with `tdd add-check`.
 4. Keep threat and mitigation text free of `<`, `>` and `&` (Threat Composer strips or escapes
-   them). Run `tdd status --run-checks`. New threats should end green, or stay red with a clear note to the
+   them). Run `tdd status --run-checks`. For each mitigation the change implements, run
+   `tdd check --resolve` so its status flips to `mitigationResolved` in the same commit as the code. New threats should end green, or stay red with a clear note to the
    user about what is still missing. Never mark a threat resolved or waived to make the gate pass.
 5. If after honest review the change has no security-relevant delta, say why and suggest `/tdd:declare`
    instead of inventing threats.

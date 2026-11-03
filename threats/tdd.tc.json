@@ -22,6 +22,17 @@
   ],
   "mitigations": [
     {
+      "id": "801b0dff-ee75-4b34-884f-a732c4c84cc7",
+      "numericId": 9,
+      "displayOrder": 9,
+      "metadata": [],
+      "tags": [
+        "check:mitigation-status"
+      ],
+      "content": "A mitigation is resolved exactly when its checks pass: tdd check --resolve flips it in the same change as the implementation, and CI fails on a lagging status or a resolved mitigation whose check fails.",
+      "status": "mitigationResolved"
+    },
+    {
       "id": "6dfeb005-2e8f-4042-b516-5341a9e3fbaf",
       "numericId": 8,
       "displayOrder": 8,
@@ -30,7 +41,7 @@
         "check:tc-canonical-format"
       ],
       "content": "tdd writes models in the exact form the Threat Composer editor saves, refuses text it would strip or escape, reformats agent edits in the PostToolUse hook, and CI fails on unformatted models.",
-      "status": "mitigationIdentified"
+      "status": "mitigationResolved"
     },
     {
       "id": "64be7938-4f34-4444-b854-ebe80d2fa068",
@@ -41,7 +52,7 @@
         "check:formatting-not-delta"
       ],
       "content": "Only semantic changes (threats, mitigations, assumptions, links) count as a delta; formatting and renumbering do not.",
-      "status": "mitigationIdentified"
+      "status": "mitigationResolved"
     },
     {
       "id": "fcef11d5-05ee-477d-9b87-4038c3fa8eed",
@@ -52,7 +63,7 @@
         "check:ci-backstop"
       ],
       "content": "The GitHub Action runs tdd ci on every pull request with full history, so skipping local hooks does not skip the gate.",
-      "status": "mitigationIdentified"
+      "status": "mitigationResolved"
     },
     {
       "id": "f86e3c8e-257e-4603-a81a-1519c5160647",
@@ -63,7 +74,7 @@
         "check:hooks-do-not-run-checks"
       ],
       "content": "Claude Code hooks never execute checks; they read only cached results. Checks run only on explicit tdd check/status --run-checks/ci.",
-      "status": "mitigationIdentified"
+      "status": "mitigationResolved"
     },
     {
       "id": "78d0f36f-d7cf-42ff-8380-2d970af0b1d4",
@@ -74,7 +85,7 @@
         "check:checks-by-name-only"
       ],
       "content": "Mitigations reference checks by name with a check: tag followed by the check name; commands live only in .tdd/config.json, which is itself gated.",
-      "status": "mitigationIdentified"
+      "status": "mitigationResolved"
     },
     {
       "id": "f1c6104d-ea92-45e1-84ff-7e9259e99953",
@@ -85,7 +96,7 @@
         "check:declaration-quality"
       ],
       "content": "Declarations must meet a minimum length and are rejected when they match a boilerplate list.",
-      "status": "mitigationIdentified"
+      "status": "mitigationResolved"
     },
     {
       "id": "76ba8b3b-47f0-4413-9668-5b59a350c8af",
@@ -96,7 +107,7 @@
         "check:policy-from-base"
       ],
       "content": "tdd ci reads policy from the base branch; config changes take effect only after merge. Check definitions come from head.",
-      "status": "mitigationIdentified"
+      "status": "mitigationResolved"
     },
     {
       "id": "46e7beef-23ee-4ff5-8f92-ec333c2cc9df",
@@ -107,7 +118,7 @@
         "check:action-no-interpolation"
       ],
       "content": "The action passes the PR body and refs to its script through env vars and never interpolates ${{ }} expressions inside run: blocks.",
-      "status": "mitigationIdentified"
+      "status": "mitigationResolved"
     }
   ],
   "assumptionLinks": [
@@ -153,9 +164,44 @@
     {
       "mitigationId": "6dfeb005-2e8f-4042-b516-5341a9e3fbaf",
       "linkedId": "d0f313cf-8ae0-4e9b-beef-b02cef7d4ca3"
+    },
+    {
+      "mitigationId": "801b0dff-ee75-4b34-884f-a732c4c84cc7",
+      "linkedId": "5e1a314b-10a2-4391-b34e-8f76021141bb"
     }
   ],
   "threats": [
+    {
+      "id": "5e1a314b-10a2-4391-b34e-8f76021141bb",
+      "numericId": 9,
+      "displayOrder": 9,
+      "metadata": [
+        {
+          "key": "STRIDE",
+          "value": [
+            "R",
+            "T"
+          ]
+        },
+        {
+          "key": "Priority",
+          "value": "Medium"
+        }
+      ],
+      "tags": [],
+      "threatSource": "contributor",
+      "prerequisites": "who edits the threat model",
+      "threatAction": "mark a mitigation resolved that was never implemented, or leave an implemented one marked identified",
+      "threatImpact": "reviewers trusting a threat model that misstates what is actually mitigated",
+      "impactedGoal": [
+        "integrity"
+      ],
+      "impactedAssets": [
+        "threat model"
+      ],
+      "statement": "A contributor who edits the threat model can mark a mitigation resolved that was never implemented, or leave an implemented one marked identified, which leads to reviewers trusting a threat model that misstates what is actually mitigated, resulting in reduced integrity of threat model",
+      "status": "threatIdentified"
+    },
     {
       "id": "d0f313cf-8ae0-4e9b-beef-b02cef7d4ca3",
       "numericId": 8,

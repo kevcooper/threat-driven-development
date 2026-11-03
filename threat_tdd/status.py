@@ -22,6 +22,7 @@ from threat_tdd.model import (
 )
 
 GREEN, UNVERIFIED, RED, WAIVED_STATE = "green", "unverified", "red", "waived"
+RESOLVED = "mitigationResolved"
 
 
 @dataclass
@@ -69,10 +70,17 @@ def evaluate(models: List[Model], results: Optional[Dict[str, str]], known_check
                 continue
 
             undefined = [c for c in all_checks if c not in known]
-            failing = [c for c in all_checks if results.get(c) in ("fail", "error", "missing")]
-            if failing:
+            bad = ("fail", "error", "missing")
+            failing = [c for c in all_checks if results.get(c) in bad]
+            # A failing check on a resolved (implemented) mitigation is a regression and
+            # always red. On a planned mitigation it is expected, like a test written
+            # before the code, and doesn't override another verified mitigation.
+            regressed = sorted({c for m in mitigations if m.get("status") == RESOLVED
+                                for c in check_names(m) if results.get(c) in bad})
+            if regressed:
                 out.append(ThreatState(model.path, t["id"], label, statement, RED,
-                                       "check failing: " + ", ".join(failing), failing, all_checks, m_labels, status))
+                                       "resolved mitigation's check failing: " + ", ".join(regressed),
+                                       regressed, all_checks, m_labels, status))
                 continue
 
             # Green if any single mitigation is fully verified.
@@ -84,6 +92,10 @@ def evaluate(models: List[Model], results: Optional[Dict[str, str]], known_check
                 out.append(ThreatState(model.path, t["id"], label, statement, GREEN,
                                        "verified by " + ", ".join(sorted({c for m in green_m for c in check_names(m)})),
                                        [], all_checks, m_labels, status))
+                continue
+            if failing:
+                out.append(ThreatState(model.path, t["id"], label, statement, RED,
+                                       "check failing: " + ", ".join(failing), failing, all_checks, m_labels, status))
                 continue
             if undefined and len(undefined) == len(all_checks):
                 out.append(ThreatState(model.path, t["id"], label, statement, RED,
@@ -120,3 +132,52 @@ def inconsistencies(states: List[ThreatState]) -> List[str]:
         for s in states
         if s.declared_status == "threatResolved" and s.state == RED
     ]
+
+
+@dataclass
+class MitigationStatusIssue:
+    """A mitigation whose declared status disagrees with its checks.
+
+    The rule: a mitigation is ``mitigationResolved`` exactly when it is implemented,
+    and "implemented" means its checks pass. The status flips in the same change that
+    makes the checks pass, so a mitigation added ahead of its code stays
+    ``mitigationIdentified`` (or ``mitigationInProgress``) until then.
+    """
+
+    path: str
+    id: str
+    label: str
+    kind: str  # "lagging": checks pass, not resolved | "unproven": resolved, a check fails
+    status: str
+    checks: List[str]
+
+    @property
+    def message(self) -> str:
+        if self.kind == "lagging":
+            return (
+                f"{self.label} checks pass ({', '.join(self.checks)}) but its status is {self.status}; "
+                f"set it to {RESOLVED} in the same change that implements it (`tdd check --resolve`)"
+            )
+        return (
+            f"{self.label} is {RESOLVED} but its check failed ({', '.join(self.checks)}); "
+            "fix the implementation or the check"
+        )
+
+
+def mitigation_status_issues(models: List[Model], results: Dict[str, str]) -> List[MitigationStatusIssue]:
+    """Only mitigations whose checks all ran are judged; others are left alone."""
+    out: List[MitigationStatusIssue] = []
+    for model in models:
+        for m in model.mitigations:
+            names = check_names(m)
+            current = str(m.get("status") or "")
+            if not names or current == WONT_DO or any(n not in results for n in names):
+                continue
+            failing = [n for n in names if results[n] != "pass"]
+            if not failing and current != RESOLVED:
+                out.append(MitigationStatusIssue(model.path, m["id"], mitigation_label(m), "lagging",
+                                                 current or "(none)", names))
+            elif failing and current == RESOLVED:
+                out.append(MitigationStatusIssue(model.path, m["id"], mitigation_label(m), "unproven",
+                                                 current, failing))
+    return out

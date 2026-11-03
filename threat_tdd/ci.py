@@ -100,6 +100,12 @@ def run(
         if policy == "block" or (s.path, s.id) in new_keys or s.failing_checks:
             blocking.append(s)
 
+    if run_checks and cfg.mitigation_status_policy != "off":
+        level = "error" if cfg.mitigation_status_policy == "block" else "warning"
+        outcomes = {k: v.outcome for k, v in check_results.items()}
+        for mi in status.mitigation_status_issues(head_models.models, outcomes):
+            issues.append(Issue(mi.path, level, mi.message))
+
     notes = status.inconsistencies(states)
     passed = result.passed and not [i for i in issues if i.level == "error"] and not blocking
     return CIResult(passed, result, states, blocking, issues, check_results, note, notes)

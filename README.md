@@ -25,9 +25,16 @@ added T-4 ... state: red (no mitigation yet)
 
 $ tdd add-mitigation --threat T-4 --content "Invoice lookups are scoped by the session tenant" --check invoice-scope
 $ tdd add-check invoice-scope --run "pytest -q tests/test_invoices.py::test_cross_tenant_denied"
-$ tdd status --run-checks
-  GREEN  T-4    An authenticated tenant user who can guess an invoice id can fetch another tenant's invoice ...
+$ tdd check --resolve
+threats/billing.tc.json: M-2 -> mitigationResolved (checks pass: invoice-scope)
+$ git commit -am "Scope invoice lookups by tenant"   # code and status flip in one commit
 ```
+
+A mitigation is `mitigationResolved` exactly when its checks pass, and the status flips in the
+same commit as the code that implements it. CI fails on an implemented mitigation still marked
+`mitigationIdentified` (`policy.mitigation_status`) and on a resolved mitigation whose check
+fails. A planned mitigation's failing check is expected and doesn't turn an otherwise verified
+threat red.
 
 When a change genuinely adds no attack surface:
 
@@ -135,7 +142,7 @@ and Assumptions views, strips `<tags>` and escapes `&`.
   "models": ["threats/**/*.tc.json"],
   "ignore": ["**/*.md", "docs/**", "LICENSE*", ".gitignore"],
   "declaration": { "min_length": 30 },
-  "policy": { "red": "block-new", "config_from_base": true, "format": "block" },
+  "policy": { "red": "block-new", "config_from_base": true, "format": "block", "mitigation_status": "block" },
   "hooks": { "commit_msg": "warn", "pre_push": "block", "claude_stop": "block" },
   "checks": {
     "invoice-scope": { "run": "pytest -q tests/test_invoices.py::test_cross_tenant_denied", "timeout": 300 }
@@ -153,7 +160,7 @@ tdd init [--hooks] [--shared-hooks]      set up config and a starter model
 tdd status [--run-checks] [--json]       red / unverified / green / waived per threat
 tdd gate [--staged | --head REF] [--base REF]
 tdd delta                                semantic model diff vs the base branch
-tdd check [NAMES] [--threat T-n] [--all]
+tdd check [NAMES] [--threat T-n] [--all] [--resolve]
 tdd ci --base origin/main [--no-checks]  the full CI gate
 tdd declare "<reason>"
 tdd add-threat | add-mitigation | link | waive | add-check
@@ -166,7 +173,8 @@ tdd hooks install|uninstall [--shared]
 
 `threats/tdd.tc.json` models threats to this tool (PR-body injection into CI, policy weakening,
 boilerplate declarations, commands smuggled through model files, hooks executing repo code,
-skipped local hooks, an agent gaming the Stop hook, the editor silently rewriting a model). Each mitigation links to a unit test, and
+skipped local hooks, an agent gaming the Stop hook, the editor silently rewriting a model, a
+mitigation status that misstates what is implemented). Each mitigation links to a unit test, and
 `.github/workflows/ci.yml` runs the action against this repository.
 
 See [docs/design.md](docs/design.md) for the design decisions behind v0.

@@ -76,3 +76,5 @@ class RepoTestCase(unittest.TestCase):
         self.tdd("add-threat", "--source", "external actor", "--action", "forge a request",
                  "--impact", "unauthorized writes", "--goal", "integrity", "--asset", "orders")
         self.tdd("add-mitigation", "--threat", "T-1", "--content", "CSRF tokens", "--check", "ok")
+        # The check passes, so the mitigation is implemented: resolve it in the same change.
+        self.tdd("check", "--resolve")

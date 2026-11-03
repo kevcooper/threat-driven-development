@@ -30,7 +30,10 @@ context prints its absolute path. Below it is written as `tdd`.
    ```
    tdd add-check invoice-tenant-scope --run "pytest -q tests/test_invoices.py::test_cross_tenant_denied"
    ```
-4. **Green.** `tdd status --run-checks` shows the threat green.
+4. **Green and resolved.** Once the implementation makes the check pass, run
+   `tdd check --resolve`. It sets every mitigation whose checks pass to `mitigationResolved`.
+   Commit that model change **in the same commit as the implementation**. A mitigation added
+   ahead of its code stays `mitigationIdentified` (or `mitigationInProgress`) until then.
 
 If the change truly adds no attack surface, declare it instead, specifically:
 ```
@@ -44,6 +47,15 @@ tdd declare "Extracts the CSV formatter into its own module; same inputs, output
 | red | no linked mitigation, no `check:` tag, check undefined, or a linked check fails |
 | unverified | linked checks exist but have not been run in this tree |
 | green | at least one linked mitigation has checks and all pass |
+
+A mitigation's status says whether it is implemented, and its checks prove it:
+
+| mitigation status | checks | meaning |
+|---|---|---|
+| `mitigationIdentified` / `mitigationInProgress` | failing | planned; the failing check is the red test |
+| `mitigationResolved` | passing | implemented and proven |
+| `mitigationIdentified` / `mitigationInProgress` | passing | **status lags**: CI fails until `tdd check --resolve` |
+| `mitigationResolved` | failing | **regression**: the threat goes red and CI fails |
 | waived | status `threatResolvedNotUseful` with a written reason (`tdd waive`) |
 
 CI (`tdd ci`) with the default `block-new` policy fails when a threat added by the change is red,
@@ -68,6 +80,8 @@ Three accepted forms, all checked for substance (minimum length, no boilerplate 
 - Do not write a declaration just to make the Stop hook or CI pass. If the change touches inputs,
   outputs, auth, secrets, dependencies, data stores, permissions, network exposure or CI, model it.
 - Do not set a threat to `threatResolved` or waive it to turn it green. Green comes from checks.
+- Do not set `mitigationResolved` by hand. `tdd check --resolve` sets it when the checks pass,
+  and the flip goes in the same commit as the code that implements the mitigation.
 - Do not delete threats unless the feature they describe is removed; say so in the commit message.
 - Prefer updating or linking an existing threat over adding a near-duplicate.
 - A failing check is a failing test: fix the code or the check, not the model.
@@ -97,7 +111,7 @@ The format is summarized in [threat-composer-format.md](threat-composer-format.m
 tdd status [--run-checks]     red/green per threat
 tdd gate [--staged|--head REF]  does this change carry a delta or declaration?
 tdd delta                     semantic diff of the threat model vs the base branch
-tdd check [--threat T-n]      run linked checks
+tdd check [--threat T-n] [--resolve]  run linked checks; --resolve marks proven mitigations resolved
 tdd link --mitigation M-2 --threat T-5 --check name
 tdd waive --threat T-3 "<specific accepted-risk reason>"
 tdd validate

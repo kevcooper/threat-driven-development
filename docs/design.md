@@ -27,6 +27,19 @@ treats as code.
   mirrors TDD (you can't merge a red test) without making adoption impossible on a repo with an
   existing backlog of unmitigated threats.
 
+## Mitigation status follows the checks
+
+Threat Composer gives mitigations a status, and TDD gives it one meaning: `mitigationResolved`
+means implemented, and implemented means the checks pass. The flip happens in the same change as
+the code, never as a later bookkeeping commit. `tdd check --resolve` makes the edit, and CI
+(`policy.mitigation_status`, default `block`) fails when a passing mitigation is still
+`mitigationIdentified` or a resolved one's check fails.
+
+The status also sharpens red and green. A failing check on a planned mitigation is expected (it is
+the test written before the code) and doesn't override another verified mitigation. A failing
+check on a resolved mitigation is a regression and always turns the threat red. The flip is
+enforced per pull request, since hooks never run checks.
+
 ## Declarations
 
 Three forms (file, commit trailer, PR body) because teams differ: files give an audit trail that

@@ -136,6 +136,9 @@ def cmd_status(args) -> int:
     print(f"\n{len(states)} threats: {c['red']} red, {c['unverified']} unverified, {c['green']} green, {c['waived']} waived")
     for note in status.inconsistencies(states):
         print(f"warning: {note}")
+    if args.run_checks:
+        for mi in status.mitigation_status_issues(loaded.models, results):
+            print(f"warning: {mi.path}: {mi.message}")
     if not args.run_checks and c["unverified"]:
         print("run `tdd status --run-checks` to verify linked checks")
     return 0
@@ -268,12 +271,36 @@ def cmd_check(args) -> int:
         print("no checks to run")
         return 0
     res = checks_mod.run_many(cfg, names, echo=None if args.json else print)
+    outcomes = {k: v.outcome for k, v in res.items()}
+    issues = status.mitigation_status_issues(loaded.models, outcomes)
+    resolved = []
+    if args.resolve:
+        by_path = {m.path: m for m in loaded.models}
+        touched = set()
+        for mi in issues:
+            if mi.kind != "lagging":
+                continue
+            model = by_path[mi.path]
+            model.find_mitigation(mi.id)["status"] = status.RESOLVED
+            touched.add(mi.path)
+            resolved.append(mi)
+        for path in sorted(touched):
+            by_path[path].save(root)
+        issues = [mi for mi in issues if mi not in resolved]
     if args.json:
-        _print_json([r.as_dict() for r in res.values()])
+        _print_json({"checks": [r.as_dict() for r in res.values()],
+                     "resolved": [mi.label for mi in resolved],
+                     "status_issues": [mi.message for mi in issues]})
     else:
         for r in res.values():
             if r.outcome != "pass":
                 print(f"\n--- {r.name} ({r.outcome}) ---\n{r.output[-3000:]}")
+        for mi in resolved:
+            print(f"{mi.path}: {mi.label} -> {status.RESOLVED} (checks pass: {', '.join(mi.checks)})")
+        if resolved:
+            print("commit the model change together with the implementation")
+        for mi in issues:
+            print(f"{mi.path}: {mi.message}")
     return 0 if all(r.outcome == "pass" for r in res.values()) else 1
 
 
@@ -482,6 +509,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("names", nargs="*")
     s.add_argument("--threat", help="only checks linked to this threat")
     s.add_argument("--all", action="store_true", help="every check in the config, linked or not")
+    s.add_argument("--resolve", action="store_true",
+                   help="set mitigations whose checks all pass to mitigationResolved")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_check)
 

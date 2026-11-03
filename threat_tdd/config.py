@@ -35,6 +35,9 @@ DEFAULTS: Dict[str, Any] = {
         # block | warn | off: models must be in the exact form the Threat Composer editor
         # writes, so opening them in the VS Code extension doesn't rewrite them.
         "format": "block",
+        # block | warn | off: a mitigation must be mitigationResolved exactly when its checks
+        # pass, so the status flip lands in the same change as the implementation.
+        "mitigation_status": "block",
     },
     "hooks": {
         "commit_msg": "warn",  # off | warn | block
@@ -92,6 +95,11 @@ class Config:
     @property
     def format_policy(self) -> str:
         mode = str(self.data["policy"].get("format", "block")).lower()
+        return mode if mode in ("block", "warn", "off") else "block"
+
+    @property
+    def mitigation_status_policy(self) -> str:
+        mode = str(self.data["policy"].get("mitigation_status", "block")).lower()
         return mode if mode in ("block", "warn", "off") else "block"
 
     @property
