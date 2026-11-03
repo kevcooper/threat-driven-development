@@ -62,7 +62,7 @@
       "tags": [
         "check:tc-canonical-format"
       ],
-      "content": "tdd writes models in the exact form the Threat Composer editor saves, refuses text it would strip or escape, reformats agent edits in the PostToolUse hook, and CI fails on unformatted models.",
+      "content": "tdd writes models in the exact form the Threat Composer editor saves, keeps angle-bracket tags as curly braces instead of letting the editor delete them, refuses text it would escape, reformats agent edits in the PostToolUse hook, and CI fails on unformatted models.",
       "status": "mitigationResolved"
     },
     {

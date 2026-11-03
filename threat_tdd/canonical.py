@@ -19,7 +19,9 @@ file, which shows up as reordered keys and stripped ``<tags>``.
 
 This module reproduces steps 1 to 3, the list-view sorts and the serializer, so
 files written by ``tdd`` are already in the form the editor would write and
-opening them changes nothing.
+opening them changes nothing. One deliberate difference: where the editor would
+delete an angle-bracket tag, ``tdd`` keeps its text in curly braces
+(``<name>`` -> ``{name}``), which the editor leaves alone.
 
 Sources (read, not vendored): awslabs/threat-composer
 ``packages/threat-composer/src/{hooks/useExportImport,utils/sanitizeHtml,customTypes,
@@ -100,6 +102,17 @@ class Uncertain(ValueError):
 
 def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# Anything Threat Composer would parse as a tag: '<' (optionally '/') then a letter, up
+# to the next '>'. tdd keeps the text by turning it into braces, which sanitize-html
+# leaves alone: "<name>" -> "{name}", "</b>" -> "{/b}".
+_BRACE_RE = re.compile(r"<(/?[A-Za-z][^<>]*)>")
+
+
+def brace_tags(value: str) -> str:
+    """Replace angle-bracket tags with curly braces instead of letting them be deleted."""
+    return _BRACE_RE.sub(r"{\1}", value) if "<" in value else value
 
 
 def sanitize_string(value: str) -> str:
@@ -262,6 +275,7 @@ class Report:
     changes: List[str] = field(default_factory=list)  # plain text Threat Composer would visibly rewrite
     uncertain: List[str] = field(default_factory=list)  # text whose rewrite is not reproduced
     markdown_changes: List[str] = field(default_factory=list)  # harmless entity escaping in Markdown
+    braced: List[str] = field(default_factory=list)  # <tags> tdd turns into {tags} so they survive
 
     @property
     def ok(self) -> bool:
@@ -491,13 +505,16 @@ def _sanitize(value: Any, path: str, r: Report) -> Any:
     if isinstance(value, str):
         if not value:
             return value
+        braced = brace_tags(value)
+        if braced != value:
+            r.braced.append(f"{path}: {_excerpt(value, braced)}")
         try:
-            out = sanitize_string(value)
+            out = sanitize_string(braced)
         except Uncertain as exc:
-            r.uncertain.append(f"{path}: {exc}: {value[:80]!r}")
-            return value
-        if out != value:
-            note = f"{path}: {_excerpt(value, out)}"
+            r.uncertain.append(f"{path}: {exc}: {braced[:80]!r}")
+            return braced
+        if out != braced:
+            note = f"{path}: {_excerpt(braced, out)}"
             (r.markdown_changes if path in MARKDOWN_PATHS else r.changes).append(note)
         return out
     if isinstance(value, list):

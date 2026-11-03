@@ -123,9 +123,14 @@ rewrite also brings in key reordering, which is the noise people notice.
 through it. The deployed CDN bundle was checked against the repository source for schema key
 order and the in-place sorts. Limits of the port:
 
-- `sanitize-html` is reproduced for tags, standard entities and `&`/`<`/`>` escaping. Comments,
-  raw-text tags like `<script>`, quoted attributes and non-standard entities are reported as
-  "uncertain" and left alone, never guessed at.
+- `sanitize-html` is reproduced for standard entities and `&`/`<`/`>` escaping. Comments,
+  `<!...>`, `<?...>` and non-standard entities are reported as "uncertain" and left alone, never
+  guessed at.
+- Angle-bracket tags are the one deliberate departure. The editor deletes them, which loses text
+  like `<api key>`. `tdd` instead rewrites any span the editor would parse as a tag into curly
+  braces (`{api key}`, `{b}bold{/b}`), which the editor leaves alone. The meaning survives, and so
+  does the file the next time it's opened. This also removes the raw-text cases (`<script>`)
+  whose exact deletion the port didn't reproduce.
 - It was validated by reading the source and against the example models in the Threat Composer
   repository, not by running Threat Composer's JavaScript.
 - A list re-sorted to a non-default order (e.g. by priority) is a user action and will still

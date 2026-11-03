@@ -52,8 +52,10 @@ MAX_CHECK_NAME = canonical.TAG_MAX - len(CHECK_TAG_PREFIX)
 
 
 def clean_text(label: str, value: str, max_len: Optional[int] = None) -> str:
-    """Reject text Threat Composer would rewrite on load (tags stripped, &, <, > escaped)."""
-    value = value.strip()
+    """Make text safe to store: angle-bracket tags become curly braces (``<name>`` ->
+    ``{name}``) instead of being deleted on load. Text Threat Composer would still
+    rewrite (``&``, a stray ``<`` or ``>``) is rejected."""
+    value = canonical.brace_tags(value.strip())
     try:
         stored = canonical.sanitize_string(value)
     except canonical.Uncertain:
@@ -61,8 +63,8 @@ def clean_text(label: str, value: str, max_len: Optional[int] = None) -> str:
     if stored != value:
         hint = f" (Threat Composer would store {stored!r})" if stored is not None else ""
         raise ValueError(
-            f"{label} contains '<', '>' or '&', which Threat Composer strips or escapes{hint}; "
-            "rephrase it, e.g. 'and' instead of '&', a word instead of '<placeholder>'"
+            f"{label} contains '<', '>' or '&', which Threat Composer escapes{hint}; "
+            "rephrase it, e.g. 'and' instead of '&', 'less than' instead of '<'"
         )
     if max_len is not None and canonical._u16len(value) > max_len:
         raise ValueError(f"{label} is longer than Threat Composer's limit of {max_len} characters")

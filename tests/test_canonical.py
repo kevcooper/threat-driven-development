@@ -12,7 +12,9 @@ import uuid
 
 from tests.helpers import RepoTestCase
 from threat_tdd import canonical
-from threat_tdd.canonical import Uncertain, canonicalize, dumps, format_text, render_statement, sanitize_string
+from threat_tdd.canonical import (
+    Uncertain, brace_tags, canonicalize, dumps, format_text, render_statement, sanitize_string,
+)
 
 U = lambda: str(uuid.uuid4())  # noqa: E731
 
@@ -43,6 +45,46 @@ class SanitizeTests(unittest.TestCase):
         for s in ["<script>x</script>", "<!-- c -->", "<a href='x'>y</a>", "<unclosed", "&bogus;", "AT&T"]:
             with self.assertRaises(Uncertain, msg=s):
                 sanitize_string(s)
+
+
+class BraceTagsTests(unittest.TestCase):
+    def test_tags_become_braces(self):
+        cases = {
+            "check:<name> tags": "check:{name} tags",
+            "a <b>bold</b> c": "a {b}bold{/b} c",
+            "line<br/>break": "line{br/}break",
+            "<script>x</script>": "{script}x{/script}",
+            "<a href='x'>y</a>": "{a href='x'}y{/a}",
+        }
+        for before, after in cases.items():
+            self.assertEqual(brace_tags(before), after, before)
+
+    def test_non_tags_untouched(self):
+        for s in ["1 < 2 > 0", "a <- b", "<3", "<!-- c -->", "x <", "no tags", "{already}"]:
+            self.assertEqual(brace_tags(s), s, s)
+
+    def test_braced_text_survives_threat_composer(self):
+        for s in ["check:<name> tags", "a <b>bold</b>", "<script>x</script>"]:
+            braced = brace_tags(s)
+            self.assertEqual(sanitize_string(braced), braced, s)
+
+    def test_canonicalize_keeps_tag_text(self):
+        data = {"schema": 1, "threats": [_threat(1, threatAction="steal the <session token>")],
+                "applicationInfo": {"description": "Uses <b>OAuth</b>"}}
+        canon, r = canonicalize(data)
+        self.assertEqual(canon["threats"][0]["threatAction"], "steal the {session token}")
+        self.assertEqual(canon["applicationInfo"]["description"], "Uses {b}OAuth{/b}")
+        self.assertEqual(len(r.braced), 2)
+        self.assertEqual((r.changes, r.uncertain), ([], []))
+        again, r2 = canonicalize(canon)
+        self.assertEqual(again, canon)
+        self.assertEqual(r2.braced, [])
+
+    def test_braces_then_escaping(self):
+        canon, r = canonicalize({"schema": 1, "threats": [_threat(1, threatAction="<x> & y")]})
+        self.assertEqual(canon["threats"][0]["threatAction"], "{x} &amp; y")
+        self.assertEqual(len(r.braced), 1)
+        self.assertEqual(len(r.changes), 1)
 
 
 class StringifyTests(unittest.TestCase):
@@ -193,6 +235,17 @@ class FmtCommandTests(RepoTestCase):
         self.assertIn("formatted", self.last_out)
         self.assertEqual(self.tdd("fmt", "--check"), 0)
 
+    def test_fmt_keeps_tags_as_braces(self):
+        self.tdd("add-threat", "--source", "user", "--action", "read data")
+        path = "threats/demo.tc.json"
+        data = self.read_json(path)
+        data["threats"][0]["threatAction"] = "read the <api key>"
+        self.write_json(path, data)
+        self.assertEqual(self.tdd("fmt"), 0)
+        self.assertIn("kept as curly braces", self.last_out)
+        self.assertEqual(self.read_json(path)["threats"][0]["threatAction"], "read the {api key}")
+        self.assertEqual(self.tdd("fmt", "--check"), 0)
+
     def test_fmt_refuses_invalid(self):
         self.write("threats/demo.tc.json", '{"schema": 1, "bogus": true}')
         self.assertEqual(self.tdd("fmt"), 1)
@@ -201,8 +254,8 @@ class FmtCommandTests(RepoTestCase):
     def test_cli_rejects_text_threat_composer_would_rewrite(self):
         self.assertEqual(self.tdd("add-threat", "--source", "user", "--action", "read & write"), 1)
         self.assertIn("&amp;", self.last_err)
-        self.assertEqual(self.tdd("add-threat", "--source", "<role>", "--action", "x"), 1)
-        self.assertEqual(self.tdd("add-threat", "--source", "user", "--action", "x"), 0)
+        self.assertEqual(self.tdd("add-threat", "--source", "<role> user", "--action", "x"), 0)
+        self.assertEqual(self.read_json("threats/demo.tc.json")["threats"][0]["threatSource"], "{role} user")
         self.assertEqual(self.tdd("add-mitigation", "--threat", "T-1", "--content", "m",
                               "--check", "a-check-name-that-is-too-long"), 1)
         self.assertIn("at most 24", self.last_err)

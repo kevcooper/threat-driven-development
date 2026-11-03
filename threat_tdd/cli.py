@@ -199,6 +199,7 @@ def format_file(root: str, rel: str, check_only: bool) -> dict:
         "errors": res.report.errors,
         "uncertain": res.report.uncertain,
         "text_rewrites": res.report.changes,
+        "braced": res.report.braced,
     }
     if res.text is not None and res.changed and not check_only:
         with open(full, "w", encoding="utf-8", newline="") as fh:
@@ -225,6 +226,8 @@ def cmd_fmt(args) -> int:
                 continue
             state = "formatted" if r["written"] else ("needs formatting" if r["changed"] else "ok")
             print(f"{r['path']}: {state}")
+            for b in r["braced"]:
+                print(f"  tag kept as curly braces (the editor would delete it): {b}")
             for c in r["text_rewrites"]:
                 print(f"  text rewritten the way Threat Composer would: {c}")
             for u in r["uncertain"]:

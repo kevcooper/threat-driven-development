@@ -76,6 +76,16 @@ class ClaudeHookTests(RepoTestCase):
         self.assertIn("Rephrase", out["reason"])
         self.assertEqual(open(os.path.join(self.root, path)).read(), before)  # not silently rewritten
 
+    def test_post_tool_use_turns_tags_into_braces(self):
+        self.tdd("add-threat", "--source", "user", "--action", "read data")
+        path = "threats/demo.tc.json"
+        data = self.read_json(path)
+        data["threats"][0]["threatAction"] = "read the <api key>"
+        self.write_json(path, data)
+        out = self.run_hook("post-tool-use", {"tool_name": "Edit", "tool_input": {"file_path": path}})
+        self.assertIn("curly braces", out["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(self.read_json(path)["threats"][0]["threatAction"], "read the {api key}")
+
     def test_uninitialized_repo_is_silent(self):
         os.remove(os.path.join(self.root, ".tdd/config.json"))
         self.assertIsNone(self.run_hook("session-start", {}))

@@ -125,8 +125,10 @@ hook validates the file and reformats it to that canonical form, then tells you 
 Threat Composer is strict, and these rules keep a file openable and stable:
 - No unknown keys anywhere. Metadata keys are limited (threats: `Comments`, `STRIDE`, `Priority`;
   mitigations and assumptions: `Comments`), plus any key starting with `custom:`.
-- No `<`, `>` or `&` in plain-text fields. Threat Composer strips `<tags>` and shows `&` as
-  `&amp;`. Write "and", and use words instead of `<placeholders>`. Markdown descriptions may use `>`.
+- No `&` or stray `<` or `>` in plain-text fields: Threat Composer shows `&` as `&amp;`, so
+  write "and". For placeholders, use curly braces (`{api key}`). Threat Composer would delete an
+  angle-bracket tag like `<api key>`, so tdd converts any it finds to braces. Markdown
+  descriptions may use `>`.
 - Tags are at most 30 characters, so check names are at most 24.
 - Link ids are full 36-character UUIDs.
 
