@@ -146,6 +146,19 @@ def post_tool_use(payload: Dict[str, Any]) -> int:
         return 0
     res = canonical.format_text(text)
     r = res.report
+    priority_changes = []
+    if res.text is not None and not r.errors:
+        # Derived priority tags are kept current on agent edits too.
+        try:
+            m = parse(rel, res.text)
+            priority_changes = m.sync_priority_tags()
+            if priority_changes:
+                canon, _ = canonical.canonicalize(m.data)
+                if canon is not None:
+                    res.text = canonical.dumps(canon)
+                    res.changed = res.text != text
+        except ValueError:
+            pass
     problems = [f"Threat Composer would refuse to open this file: {e}" for e in r.errors]
     if res.text is not None:
         try:
@@ -179,6 +192,9 @@ def post_tool_use(payload: Dict[str, Any]) -> int:
             "rewrite it."
             + (" Angle-bracket tags were kept as curly braces, since the editor would delete them: "
                + "; ".join(r.braced) + "." if r.braced else "")
+            + (" Mitigation priority tags were updated from their linked threats: "
+               + "; ".join(f"{l} -> {e or 'none'}" for l, _, e in priority_changes) + "."
+               if priority_changes else "")
             + " Re-read the file before editing it again.",
         }})
     return 0

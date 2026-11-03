@@ -14,6 +14,10 @@ TDD conventions layered on top of Threat Composer:
     without exactly one. Accept, transfer and avoid carry a ``Comments`` reason.
   - ``threatResolvedNotUseful`` means "not applicable" (dismissed), with a reason.
   - Statuses track progress; see ``status.py``.
+  - Each mitigation carries one ``priority:<high|medium|low>`` tag: the highest
+    ``Priority`` among the threats it is linked to (not-applicable threats don't
+    count). It is derived, so ``tdd`` keeps it up to date on every save. Threat
+    Composer's schema doesn't allow Priority metadata on mitigations, hence a tag.
 """
 
 from __future__ import annotations
@@ -27,6 +31,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from threat_tdd import canonical, globs, gitutil
 
 CHECK_TAG_PREFIX = "check:"
+PRIORITY_TAG_PREFIX = "priority:"
+PRIORITY_RANK = {"High": 3, "Medium": 2, "Low": 1}
 
 THREAT_STATUSES = {"threatIdentified", "threatResolved", "threatResolvedNotUseful"}
 MITIGATION_STATUSES = {
@@ -130,6 +136,10 @@ def set_metadata(item: Dict[str, Any], key: str, value: Any) -> None:
             entry["value"] = value
             return
     meta.append({"key": key, "value": value})
+
+
+def priority_tags(item: Dict[str, Any]) -> List[str]:
+    return [t for t in item.get("tags") or [] if isinstance(t, str) and t.lower().startswith(PRIORITY_TAG_PREFIX)]
 
 
 def check_names(mitigation: Dict[str, Any]) -> List[str]:
@@ -323,6 +333,43 @@ class Model:
             self._append_comment(mitigation, f"Will not action: {clean_text('reason', reason)}")
         mitigation["status"] = PROGRESS[progress]
 
+    # ---- derived priority tags -------------------------------------------------------
+
+    def linked_threats(self, mitigation_id: str) -> List[Dict[str, Any]]:
+        ids = {l.get("linkedId") for l in self.mitigation_links if l.get("mitigationId") == mitigation_id}
+        return [t for t in self.threats if t.get("id") in ids]
+
+    def expected_priority_tag(self, mitigation: Dict[str, Any]) -> Optional[str]:
+        """priority:<level> for the highest Priority of the linked, applicable threats."""
+        levels = [
+            metadata_value(t, "Priority")
+            for t in self.linked_threats(mitigation.get("id"))
+            if t.get("status") != NOT_USEFUL
+        ]
+        levels = [p for p in levels if p in PRIORITY_RANK]
+        if not levels:
+            return None
+        return PRIORITY_TAG_PREFIX + max(levels, key=PRIORITY_RANK.get).lower()
+
+    def priority_tag_drift(self) -> List[Tuple[Dict[str, Any], List[str], Optional[str]]]:
+        """(mitigation, current priority tags, expected tag) for each mitigation that is off."""
+        out = []
+        for m in self.mitigations:
+            current = priority_tags(m)
+            expected = self.expected_priority_tag(m)
+            if current != ([expected] if expected else []):
+                out.append((m, current, expected))
+        return out
+
+    def sync_priority_tags(self) -> List[Tuple[str, List[str], Optional[str]]]:
+        """Set every mitigation's priority tag. Returns (label, old tags, new tag) per change."""
+        changes = []
+        for m, current, expected in self.priority_tag_drift():
+            tags = [t for t in m.get("tags") or [] if t not in current]
+            m["tags"] = tags + ([expected] if expected else [])
+            changes.append((mitigation_label(m), current, expected))
+        return changes
+
     def canonical_text(self) -> str:
         """The file text Threat Composer would write for this model."""
         canon, report = canonical.canonicalize(self.data)
@@ -331,6 +378,7 @@ class Model:
         return canonical.dumps(canon)
 
     def save(self, root: str) -> None:
+        self.sync_priority_tags()  # derived; always current in files tdd writes
         text = self.canonical_text()
         full = os.path.join(root, self.path)
         os.makedirs(os.path.dirname(full) or ".", exist_ok=True)

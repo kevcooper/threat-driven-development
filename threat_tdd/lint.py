@@ -20,6 +20,7 @@ Rule codes are stable so they can be disabled in ``.tdd/config.json`` (``lint.di
   TDD120 mitigation not linked to any threat                           warning
   TDD121 will-not-action mitigation without a Comments reason          error
   TDD122 resolved mitigation with no check to prove it                 warning
+  TDD150 mitigation's priority:<level> tag missing or stale            error
   TDD130 threat without STRIDE metadata                                warning
   TDD131 threat without Priority metadata                              warning
   TDD132 threat without impacted goal or impacted assets              warning
@@ -56,6 +57,7 @@ RULES: Dict[str, tuple] = {
     "TDD120": ("warning", "orphan mitigation"),
     "TDD121": ("error", "will-not-action without reason"),
     "TDD122": ("warning", "resolved mitigation unproven"),
+    "TDD150": ("error", "mitigation priority tag"),
     "TDD130": ("warning", "missing STRIDE"),
     "TDD131": ("warning", "missing priority"),
     "TDD132": ("warning", "missing impact"),
@@ -189,6 +191,13 @@ def lint_model(
             add("TDD121", label, "will-not-action without a Comments reason (tdd progress --reason)")
         if m.get("status") == st.RESOLVED and not names:
             add("TDD122", label, "resolved, but no check:<name> tag proves it")
+
+    for m, current, expected in model.priority_tag_drift():
+        label = mitigation_label(m)
+        have = ", ".join(current) or "no priority tag"
+        want = expected or "no priority tag (no linked threat has a Priority)"
+        add("TDD150", label, f"has {have}, should have {want}: the highest Priority of its linked "
+                             "threats; run `tdd sync --no-checks`")
 
     # -- assumptions ----------------------------------------------------------------------
     linked_assumptions = {l.get("assumptionId") for l in model.assumption_links}

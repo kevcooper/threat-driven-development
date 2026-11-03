@@ -56,6 +56,10 @@ Threat Composer's status fields track progress, and `tdd sync` keeps them in ste
   will-not-action (with a reason) by hand. `resolved` is only ever set when the checks pass.
 - threats: `threatIdentified` → `threatResolved` once green or handled under a strategy tag.
 
+Each mitigation also carries a `priority:high|medium|low` tag: the highest Priority of the
+threats it's linked to, so work can be ordered by what it protects. `tdd` sets it on every save,
+and `tdd sync --no-checks` repairs it after edits in the editor. A stale tag fails lint (TDD150).
+
 The statuses change in the same commit as the work. CI (`policy.status_sync`) fails when a status
 lags behind the checks, or claims more than they prove. A failing check on an in-progress
 mitigation is the expected red test. On a resolved mitigation it's a regression.
@@ -206,7 +210,7 @@ Composer UI. Mitigations never contain commands.
 ```
 tdd init [--hooks] [--shared-hooks]      set up config and a starter model
 tdd status [--run-checks] [--json]       state per threat, strategy, mitigation progress
-tdd sync [--dry-run] [--no-checks]       run checks; move statuses along with the work
+tdd sync [--dry-run] [--no-checks]       run checks; update statuses and mitigation priority tags
 tdd lint [PATHS] [--schema-only] [--strict] [--disable CODES] [--rules]
 tdd schema [--print | --export PATH]     the vendored official Threat Composer schema
 tdd strategy --threat T-n <mitigate|accept|transfer|avoid> ["reason"]
