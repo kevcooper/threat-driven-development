@@ -493,7 +493,7 @@ def cmd_tag(args) -> int:
     else:
         for r in done:
             if r.action == "skipped":
-                print(f"{'skipped':12} {r.label} in {r.model_path}: id {r.mitigation_id!r} isn't safe as a tag name")
+                print(f"{'skipped':12} {r.label} in {r.model_path}: {r.reason}")
             else:
                 print(f"{r.action:12} {r.tag}  ({r.label} resolved in {r.commit[:10]})")
         if not done:

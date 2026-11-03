@@ -68,7 +68,7 @@
       "description": "models validate against the vendored Threat Composer schema"
     },
     "tag-safety": {
-      "run": "python3 -m unittest -q tests.test_tagging.TaggingTests.test_unsafe_ids_are_not_tags tests.test_tagging.TaggingTests.test_unsafe_id_skipped_with_warning tests.test_tagging.TaggingTests.test_model_text_cannot_reach_a_shell tests.test_security_controls.TagWriteTokenTests",
+      "run": "python3 -m unittest -q tests.test_tagging.TaggingTests.test_model_names_are_ref_safe tests.test_tagging.TaggingTests.test_non_integer_numeric_id_skipped_with_warning tests.test_tagging.TaggingTests.test_foreign_tag_is_left_alone tests.test_tagging.TaggingTests.test_model_text_cannot_reach_a_shell tests.test_security_controls.TagWriteTokenTests",
       "description": "mitigation tags can't inject into git or leak a write token to PRs"
     }
   }

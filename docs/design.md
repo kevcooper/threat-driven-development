@@ -92,20 +92,22 @@ change, only the newly staged part. Pre-push and CI cover it.
 ## Mitigation tags mark where each mitigation landed
 
 Because a mitigation's status flips to resolved in the same commit as its implementation, that
-commit is a precise, permanent marker. `tdd` puts an annotated tag there, named after the
-mitigation's id (the UUID Threat Composer assigns), whose message records the threats, checks and
-priority. The id is unique across models and survives renumbering and renamed files, which
-`M-<n>` labels don't. That answers
+commit is a precise, permanent marker. `tdd` puts an annotated tag there, `<model>/M-<n>`,
+whose message records the threats, checks, priority and the mitigation's UUID. `M-<n>` is the id
+people see in Threat Composer. It's unique only within a model, so the model's file name scopes
+it. The file name is used rather than the application name inside the model, because people
+rename applications and the tags should stay put. That answers
 "when and how was this mitigated?" from git alone, without the model file.
 
 - **Where tags come from:** the post-commit hook tags new commits. `tdd tag` covers ranges, and
   CI uses it on `main`.
 - **History rewrites:** a tag moves when its commit is rewritten (amend, rebase, squash: the same
   event on a new commit). A merged branch commit keeps its tag. A later re-resolution, after a
-  regression, gets `<id>-rN`, judged by whether the earlier tag is already in mainline history.
-- **Safety:** the id comes from model content, so only ids made of letters, digits, `.`, `_` and
-  `-` become tag names, and `git check-ref-format` checks them too. Anything else is skipped with
-  a warning. Tag text goes to git on stdin. Only a push-to-main job
+  regression, gets `<model>/M-<n>-rN`, judged by whether the earlier tag is already in mainline
+  history. A name already held by a different mitigation (same file name in two folders) or by a
+  tag tdd didn't create is never overwritten. That resolution is skipped with a warning.
+- **Safety:** tag names come only from the file name, reduced to letters, digits, `.`, `_` and
+  `-`, and the integer numericId, and `git check-ref-format` checks them too. Tag text goes to git on stdin. Only a push-to-main job
   gets a write token (T-12).
 
 ## Mitigation priority is derived, not entered

@@ -20,7 +20,7 @@ inputs:
     default: "false"
   tag-mitigations:
     description: >-
-      On push events, add annotated git tags, named after each mitigation's id, to the commits that
+      On push events, add annotated git tags (<model>/M-<n>) to the commits that
       resolved mitigations, and push them. Needs `permissions: contents: write`. Use it on main,
       where squash merges create new commits.
     required: false

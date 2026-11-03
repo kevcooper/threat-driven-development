@@ -35,7 +35,9 @@ class TaggingTests(RepoTestCase):
         return self.git("tag", "-l").split()
 
     def mid(self, path=PATH):
-        return self.read_json(path)["mitigations"][0]["id"]
+        """The tag name for the model's first mitigation: <model>/M-<n>."""
+        name = os.path.basename(path)[: -len(".tc.json")]
+        return f"{name}/M-{self.read_json(path)['mitigations'][0]['numericId']}"
 
     def cfg(self):
         return config_mod.load(self.root)
@@ -55,7 +57,8 @@ class TaggingTests(RepoTestCase):
         self.assertIn("Threat: T-1 (High): A user can forge a request", body)
         self.assertIn("Checks: ok", body)
         self.assertIn("Priority: high", body)
-        self.assertIn(f"Mitigation id: {mid}", body)
+        self.assertEqual(mid, "demo/M-1")
+        self.assertIn(f"Mitigation id: {self.read_json(PATH)['mitigations'][0]['id']}", body)
         self.assertEqual(self.git("cat-file", "-t", mid).strip(), "tag")  # annotated
         self.tdd("tag")
         self.assertIn("exists", self.last_out)
@@ -154,32 +157,45 @@ class TaggingTests(RepoTestCase):
         self.commit("second model")
         self.implement()
         self.tdd("tag")
-        # ids are unique, so the two M-1s get distinct tags without any suffix
-        self.assertEqual(sorted(self.tags()), sorted([self.mid(), self.mid("threats/other/demo.tc.json")]))
+        # both models are called "demo": the first M-1 gets demo/M-1, the other is skipped
+        self.assertEqual(self.tags(), ["demo/M-1"])
+        self.assertIn("already marks a different mitigation", self.last_out)
 
-    def test_unsafe_ids_are_not_tags(self):
+    def test_model_names_are_ref_safe(self):
         cfg = self.cfg()
-        for bad in ["--force", "-n", "a..b", "x/y", "$(id)", "a b", ".hidden", "x.lock", "", None]:
-            self.assertIsNone(tagging.base_tag(cfg, bad), bad)
-        self.assertEqual(tagging.base_tag(cfg, "3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d"),
-                         "3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d")
-        self.assertFalse(tagging._valid_ref(self.root, "a..b"))
+        cases = {
+            "threats/billing.tc.json": "billing/M-3",
+            "threats/My Service!.tc.json": "My-Service/M-3",
+            "threats/..evil.tc.json": "evil/M-3",
+            "x/--force.tc.json": "force/M-3",
+            "x/$(id).tc.json": "id/M-3",
+            "x/a..b.tc.json": "a.b/M-3",
+            "x/name.lock.tc.json": "name/M-3",
+        }
+        for path, tag in cases.items():
+            self.assertEqual(tagging.base_tag(cfg, path, 3), tag, path)
+            self.assertTrue(tagging._valid_ref(self.root, tag), tag)
+        for bad in ["3", 1.5, None, True, "M-3"]:
+            self.assertIsNone(tagging.base_tag(cfg, "threats/billing.tc.json", bad), bad)
 
-    def test_unsafe_id_skipped_with_warning(self):
+    def test_non_integer_numeric_id_skipped_with_warning(self):
         data = self.read_json(PATH)
-        old = data["mitigations"][0]["id"]
-        data["mitigations"][0]["id"] = "--force"
-        for link in data["mitigationLinks"]:
-            if link["mitigationId"] == old:
-                link["mitigationId"] = "--force"
-        self.write(PATH, json.dumps(data))
-        self.write("implemented", "yes\n")
+        data["mitigations"][0]["numericId"] = 1.5
         data["mitigations"][0]["status"] = "mitigationResolved"
         self.write(PATH, json.dumps(data))
-        self.commit("hostile id")
+        self.write("implemented", "yes\n")
+        self.commit("odd numericId")
         self.assertEqual(self.tdd("tag"), 0)
         self.assertIn("skipped", self.last_out)
+        self.assertIn("isn't a whole number", self.last_out)
         self.assertEqual(self.tags(), [])
+
+    def test_foreign_tag_is_left_alone(self):
+        self.git("tag", "demo/M-1")  # someone else's lightweight tag
+        self.implement()
+        self.tdd("tag")
+        self.assertIn("wasn't created by tdd", self.last_out)
+        self.assertEqual(self.git("cat-file", "-t", "demo/M-1").strip(), "commit")  # untouched
 
     def test_prefix(self):
         cfg = self.read_json(".tdd/config.json")
@@ -187,7 +203,7 @@ class TaggingTests(RepoTestCase):
         self.write_json(".tdd/config.json", cfg)
         self.implement()
         self.tdd("tag")
-        self.assertEqual(self.tags(), [f"mitigation/{self.mid()}"])
+        self.assertEqual(self.tags(), ["mitigation/demo/M-1"])
 
     def test_model_text_cannot_reach_a_shell(self):
         data = self.read_json(PATH)
