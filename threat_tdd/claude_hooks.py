@@ -164,8 +164,8 @@ def post_tool_use(payload: Dict[str, Any]) -> int:
         _emit({
             "decision": "block",
             "reason": f"{rel} contains text that Threat Composer rewrites when the file is opened "
-            "(it strips <tags> and escapes &, < and >). Rephrase these values without those characters, "
-            "e.g. 'and' instead of '&' and a plain word instead of '<placeholder>':\n"
+            "(it escapes &, < and >). Rephrase these values without those characters, e.g. 'and' "
+            "instead of '&' (tags like <name> are fine: tdd turns them into {name}):\n"
             + "\n".join(f"- {c}" for c in r.changes + r.uncertain),
         })
         return 0
@@ -176,7 +176,10 @@ def post_tool_use(payload: Dict[str, Any]) -> int:
             "hookEventName": "PostToolUse",
             "additionalContext": f"tdd reformatted {rel} into Threat Composer's canonical form (key order, "
             "list order, 2-space JSON, no trailing newline) so opening it in the VS Code extension won't "
-            "rewrite it. Re-read the file before editing it again.",
+            "rewrite it."
+            + (" Angle-bracket tags were kept as curly braces, since the editor would delete them: "
+               + "; ".join(r.braced) + "." if r.braced else "")
+            + " Re-read the file before editing it again.",
         }})
     return 0
 

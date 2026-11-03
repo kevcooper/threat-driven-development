@@ -171,10 +171,13 @@ and Assumptions views, strips `<tags>` and escapes `&`.
 
 - `tdd fmt` rewrites models into that form, and `tdd fmt --check` only reports.
 - CI fails on unformatted models (`policy.format`: `block`, `warn` or `off`).
+- Angle-bracket tags the editor would delete are kept as curly braces: `<api key>` becomes
+  `{api key}` and `<b>bold</b>` becomes `{b}bold{/b}`. `tdd fmt`, the CLI and the agent hook all
+  do this, and the editor leaves braces alone.
 - When the agent edits a model, the plugin reformats it right away. If the agent wrote text
-  Threat Composer would strip or escape, the plugin asks it to rephrase instead.
-- The CLI refuses `<`, `>` and `&` in threat and mitigation text, and check names longer than 24
-  characters (tags are capped at 30).
+  Threat Composer would escape (`&`, or a stray `<` or `>`), the plugin asks it to rephrase.
+- The CLI refuses `&` and stray `<` or `>` in threat and mitigation text, and check names longer
+  than 24 characters (tags are capped at 30).
 - Canonical files have no trailing newline. If an editor or a pre-commit end-of-file fixer adds
   one, `tdd fmt --check` fails. Exclude `*.tc.json` from it (this repo's `.editorconfig` shows how).
 

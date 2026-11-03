@@ -106,6 +106,8 @@ def lint_model(
         add("TC004", "", f"Threat Composer will rewrite this text on open; rephrase: {c}")
     for u in report.uncertain:
         add("TC004", "", f"markup Threat Composer will rewrite unpredictably; rephrase: {u}")
+    for b in report.braced:
+        add("TC004", "", f"angle-bracket tag the editor would delete; `tdd fmt` keeps it as curly braces: {b}")
     if model.text is not None and canonical.dumps(canon) != model.text:
         add("TC003", "", "not in Threat Composer's canonical format, so opening it in the VS Code "
                          "extension will rewrite it; run `tdd fmt`")

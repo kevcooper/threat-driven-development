@@ -117,8 +117,9 @@ leave nothing to rewrite, `tdd` writes:
   `type, assumptionId, linkedId`; metadata `key, value`. `displayedStatement` is dropped.
 - arrays in the order the list views leave them (they sort in place): threats by `numericId`
   descending, mitigations and assumptions by `displayOrder` descending. Missing or zero sort first.
-- string values as `sanitize-html` leaves them: tags removed, entities decoded, `&`, `<`, `>`
-  escaped.
+- string values as `sanitize-html` leaves them: entities decoded, `&`, `<`, `>` escaped. One
+  deliberate difference: the editor deletes angle-bracket tags, but `tdd` keeps their text in curly
+  braces (`<name>` becomes `{name}`), which the editor leaves alone.
 - two-space indentation, non-ASCII characters unescaped, no trailing newline.
 
 `tdd fmt` applies all of this; `tdd fmt --check` reports without writing.

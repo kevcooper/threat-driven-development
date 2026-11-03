@@ -47,8 +47,8 @@ tdd add-threat --source "<threat source>" --prerequisites "<prerequisites>" \
 ```
 Recommend a risk handling strategy for each threat. Default to `mitigate`. Propose `accept`,
 `transfer` or `avoid` only with a specific reason the user can approve (who carries a transferred
-risk, why residual risk is acceptable, what design change avoids it). Keep all text free of `<`,
-`>` and `&`, which Threat Composer strips or escapes.
+risk, why residual risk is acceptable, what design change avoids it). Keep all text free of `&` and
+stray `<` or `>`, which Threat Composer escapes. Write placeholders in curly braces, `{name}`.
 
 ### Proposed mitigations and checks
 For each mitigation: the content, which threats it covers, and a concrete check that would fail if
