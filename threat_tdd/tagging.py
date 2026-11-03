@@ -3,23 +3,24 @@
 A mitigation is resolved in the same commit as the code that implements it
 (``tdd sync`` flips its status), so that commit is where the mitigation landed.
 ``tdd`` marks it with an annotated tag named after the model and the mitigation's
-friendly id, the ``M-<n>`` label shown in Threat Composer::
+friendly id, the ``M-<n>`` label shown in Threat Composer, under a ``tdd/``
+namespace that keeps them apart from release tags::
 
-    <model>/M-<n>        e.g. billing/M-3 for M-3 in threats/billing.tc.json
+    tdd/<model>/M-<n>    e.g. tdd/billing/M-3 for M-3 in threats/billing.tc.json
 
 The model name is the model's file name without ``.tc.json``, made safe for a git
-ref. An optional ``tags.prefix`` in ``.tdd/config.json`` goes in front:
-``<prefix>/<model>/M-<n>``.
+ref. The namespace is ``tags.prefix`` in ``.tdd/config.json`` (default ``tdd``; an
+empty prefix gives ``<model>/M-<n>``).
 
 The tag message records the mitigation, the threats it covers, its checks and its
-priority, so ``git show billing/M-3`` answers "when and how was this mitigated?".
+priority, so ``git show tdd/billing/M-3`` answers "when and how was this mitigated?".
 
 - A post-commit hook tags new commits (``tdd hooks install``).
 - ``tdd tag`` tags any range, which is how CI tags ``main`` after squash merges.
 - An amended or rebased commit moves the tag to the new commit, since it's the
   same event, rewritten.
 - If a mitigation regresses and is resolved again later, the later commit gets
-  ``<model>/M-<n>-r2``, ``-r3`` and so on.
+  ``tdd/<model>/M-<n>-r2``, ``-r3`` and so on.
 - A name already used by a different mitigation (two model files with the same
   name in different folders) or by a tag tdd didn't create is left alone, and the
   resolution is skipped with a warning.
@@ -69,7 +70,7 @@ class Resolution:
 
 
 def tag_prefix(cfg: Config) -> str:
-    return str((cfg.data.get("tags") or {}).get("prefix", "")).strip().strip("/")
+    return str((cfg.data.get("tags") or {}).get("prefix", "tdd")).strip().strip("/")
 
 
 def tags_enabled(cfg: Config) -> bool:
@@ -88,7 +89,7 @@ def model_slug(path: str) -> str:
 
 
 def base_tag(cfg: Config, model_path: str, numeric_id: Any) -> Optional[str]:
-    """<prefix>/<model>/M-<n>, or None when the numericId isn't a whole number."""
+    """tdd/<model>/M-<n> (or <prefix>/<model>/M-<n>), None when numericId isn't whole."""
     if isinstance(numeric_id, bool) or not isinstance(numeric_id, (int, float)) or numeric_id != int(numeric_id):
         return None
     name = f"{model_slug(model_path)}/M-{int(numeric_id)}"

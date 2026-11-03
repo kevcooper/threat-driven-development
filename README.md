@@ -151,12 +151,13 @@ pushes to `main`, so pull requests never get a write token:
 ### Mitigation tags
 
 The commit that resolves a mitigation is where it landed, since the status flips in the same
-commit as the code. `tdd` marks that commit with an annotated git tag, `<model>/M-<n>`: the
-model's file name without `.tc.json`, then the mitigation's id as shown in Threat Composer:
+commit as the code. `tdd` marks that commit with an annotated git tag, `tdd/<model>/M-<n>`.
+The model is its file name without `.tc.json`, and `M-<n>` is the mitigation's id as shown in
+Threat Composer. The `tdd/` namespace keeps these apart from release tags:
 
 ```console
-$ git show billing/M-2
-tag billing/M-2
+$ git show tdd/billing/M-2
+tag tdd/billing/M-2
 M-2 resolved: Invoice lookups are scoped by the session tenant
 
 Model: threats/billing.tc.json
@@ -175,9 +176,9 @@ Mitigation id: 3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
   `tag-mitigations: "true"` (above). Branch tags then move to the squashed commit. With merge
   commits, the branch commit that did the work keeps its tag.
 - **Regressions:** a mitigation that is resolved, regresses and is resolved again gets
-  `billing/M-2-r2` on the later commit.
-- **Configuration:** `"tags": {"prefix": "mitigation"}` in `.tdd/config.json` gives
-  `mitigation/billing/M-2`. `"mitigations": false` turns tagging off.
+  `tdd/billing/M-2-r2` on the later commit.
+- **Configuration:** `"tags": {"prefix": "tm"}` in `.tdd/config.json` changes the namespace to
+  `tm/billing/M-2`, and `"prefix": ""` drops it. `"mitigations": false` turns tagging off.
 - **Name clashes:** two model files with the same name in different folders would share tag
   names. The first mitigation to claim a name keeps it, and the other is skipped with a warning.
   So is a name already used by a tag `tdd` didn't create. Give such model files distinct names.

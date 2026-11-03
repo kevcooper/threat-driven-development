@@ -92,7 +92,7 @@ change, only the newly staged part. Pre-push and CI cover it.
 ## Mitigation tags mark where each mitigation landed
 
 Because a mitigation's status flips to resolved in the same commit as its implementation, that
-commit is a precise, permanent marker. `tdd` puts an annotated tag there, `<model>/M-<n>`,
+commit is a precise, permanent marker. `tdd` puts an annotated tag there, `tdd/<model>/M-<n>`,
 whose message records the threats, checks, priority and the mitigation's UUID. `M-<n>` is the id
 people see in Threat Composer. It's unique only within a model, so the model's file name scopes
 it. The file name is used rather than the application name inside the model, because people
@@ -103,7 +103,7 @@ rename applications and the tags should stay put. That answers
   CI uses it on `main`.
 - **History rewrites:** a tag moves when its commit is rewritten (amend, rebase, squash: the same
   event on a new commit). A merged branch commit keeps its tag. A later re-resolution, after a
-  regression, gets `<model>/M-<n>-rN`, judged by whether the earlier tag is already in mainline
+  regression, gets `tdd/<model>/M-<n>-rN`, judged by whether the earlier tag is already in mainline
   history. A name already held by a different mitigation (same file name in two folders) or by a
   tag tdd didn't create is never overwritten. That resolution is skipped with a warning.
 - **Safety:** tag names come only from the file name, reduced to letters, digits, `.`, `_` and

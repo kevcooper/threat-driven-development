@@ -35,9 +35,9 @@ class TaggingTests(RepoTestCase):
         return self.git("tag", "-l").split()
 
     def mid(self, path=PATH):
-        """The tag name for the model's first mitigation: <model>/M-<n>."""
+        """The tag name for the model's first mitigation: tdd/<model>/M-<n>."""
         name = os.path.basename(path)[: -len(".tc.json")]
-        return f"{name}/M-{self.read_json(path)['mitigations'][0]['numericId']}"
+        return f"tdd/{name}/M-{self.read_json(path)['mitigations'][0]['numericId']}"
 
     def cfg(self):
         return config_mod.load(self.root)
@@ -57,7 +57,7 @@ class TaggingTests(RepoTestCase):
         self.assertIn("Threat: T-1 (High): A user can forge a request", body)
         self.assertIn("Checks: ok", body)
         self.assertIn("Priority: high", body)
-        self.assertEqual(mid, "demo/M-1")
+        self.assertEqual(mid, "tdd/demo/M-1")
         self.assertIn(f"Mitigation id: {self.read_json(PATH)['mitigations'][0]['id']}", body)
         self.assertEqual(self.git("cat-file", "-t", mid).strip(), "tag")  # annotated
         self.tdd("tag")
@@ -158,19 +158,19 @@ class TaggingTests(RepoTestCase):
         self.implement()
         self.tdd("tag")
         # both models are called "demo": the first M-1 gets demo/M-1, the other is skipped
-        self.assertEqual(self.tags(), ["demo/M-1"])
+        self.assertEqual(self.tags(), ["tdd/demo/M-1"])
         self.assertIn("already marks a different mitigation", self.last_out)
 
     def test_model_names_are_ref_safe(self):
         cfg = self.cfg()
         cases = {
-            "threats/billing.tc.json": "billing/M-3",
-            "threats/My Service!.tc.json": "My-Service/M-3",
-            "threats/..evil.tc.json": "evil/M-3",
-            "x/--force.tc.json": "force/M-3",
-            "x/$(id).tc.json": "id/M-3",
-            "x/a..b.tc.json": "a.b/M-3",
-            "x/name.lock.tc.json": "name/M-3",
+            "threats/billing.tc.json": "tdd/billing/M-3",
+            "threats/My Service!.tc.json": "tdd/My-Service/M-3",
+            "threats/..evil.tc.json": "tdd/evil/M-3",
+            "x/--force.tc.json": "tdd/force/M-3",
+            "x/$(id).tc.json": "tdd/id/M-3",
+            "x/a..b.tc.json": "tdd/a.b/M-3",
+            "x/name.lock.tc.json": "tdd/name/M-3",
         }
         for path, tag in cases.items():
             self.assertEqual(tagging.base_tag(cfg, path, 3), tag, path)
@@ -191,11 +191,11 @@ class TaggingTests(RepoTestCase):
         self.assertEqual(self.tags(), [])
 
     def test_foreign_tag_is_left_alone(self):
-        self.git("tag", "demo/M-1")  # someone else's lightweight tag
+        self.git("tag", "tdd/demo/M-1")  # someone else's lightweight tag
         self.implement()
         self.tdd("tag")
         self.assertIn("wasn't created by tdd", self.last_out)
-        self.assertEqual(self.git("cat-file", "-t", "demo/M-1").strip(), "commit")  # untouched
+        self.assertEqual(self.git("cat-file", "-t", "tdd/demo/M-1").strip(), "commit")  # untouched
 
     def test_prefix(self):
         cfg = self.read_json(".tdd/config.json")
@@ -204,6 +204,9 @@ class TaggingTests(RepoTestCase):
         self.implement()
         self.tdd("tag")
         self.assertEqual(self.tags(), ["mitigation/demo/M-1"])
+        cfg["tags"] = {"prefix": ""}
+        self.write_json(".tdd/config.json", cfg)
+        self.assertEqual(tagging.base_tag(self.cfg(), PATH, 1), "demo/M-1")
 
     def test_model_text_cannot_reach_a_shell(self):
         data = self.read_json(PATH)
