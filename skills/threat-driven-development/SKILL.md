@@ -75,10 +75,21 @@ Three accepted forms, all checked for substance (minimum length, no boilerplate 
 
 ## Editing `.tc.json` directly
 
-The CLI covers the common edits. For anything else (assumptions, architecture text, dataflow) edit
-the JSON; the PostToolUse hook validates it after each edit. The format is summarized in
-[threat-composer-format.md](threat-composer-format.md). Files open in the Threat Composer UI
-(https://awslabs.github.io/threat-composer) for humans.
+Prefer the CLI: it writes files in the exact form the Threat Composer VS Code editor saves, so a
+human opening the file there doesn't get a dirty, rewritten file. For anything the CLI doesn't
+cover (assumptions, architecture text, dataflow), edit the JSON. After each edit the PostToolUse
+hook validates the file and reformats it to that canonical form, then tells you to re-read it.
+
+Threat Composer is strict, and these rules keep a file openable and stable:
+- No unknown keys anywhere. Metadata keys are limited (threats: `Comments`, `STRIDE`, `Priority`;
+  mitigations and assumptions: `Comments`), plus any key starting with `custom:`.
+- No `<`, `>` or `&` in plain-text fields. Threat Composer strips `<tags>` and shows `&` as
+  `&amp;`. Write "and", and use words instead of `<placeholders>`. Markdown descriptions may use `>`.
+- Tags are at most 30 characters, so check names are at most 24.
+- Link ids are full 36-character UUIDs.
+
+The format is summarized in [threat-composer-format.md](threat-composer-format.md). Run
+`tdd fmt` after any bulk edit; CI fails on files that aren't in canonical form.
 
 ## Useful commands
 
@@ -90,4 +101,5 @@ tdd check [--threat T-n]      run linked checks
 tdd link --mitigation M-2 --threat T-5 --check name
 tdd waive --threat T-3 "<specific accepted-risk reason>"
 tdd validate
+tdd fmt [--check]             rewrite models exactly as the Threat Composer editor saves them
 ```

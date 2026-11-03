@@ -11,7 +11,7 @@ from typing import List, Optional
 from threat_tdd import __version__
 from threat_tdd import checks as checks_mod
 from threat_tdd import ci as ci_mod
-from threat_tdd import claude_hooks, declare, git_hooks, gitutil, status
+from threat_tdd import canonical, claude_hooks, declare, git_hooks, gitutil, status
 from threat_tdd import config as config_mod
 from threat_tdd import delta as delta_mod
 from threat_tdd import gate as gate_mod
@@ -142,30 +142,80 @@ def cmd_status(args) -> int:
 
 
 def cmd_validate(args) -> int:
+    from threat_tdd.model import Issue
     root = _root()
     cfg = config_mod.load(root)
     patterns = cfg.models if cfg else ["**/*.tc.json"]
     known = cfg.checks.keys() if cfg else None
-    issues = []
+    issues: List[Issue] = []
     if args.paths:
         for p in args.paths:
+            rel = os.path.relpath(os.path.abspath(p), root).replace(os.sep, "/")
             try:
-                issues += validate(load_file(root, os.path.relpath(os.path.abspath(p), root)), known)
+                issues += validate(load_file(root, rel), known)
             except (ValueError, OSError) as exc:
-                issues.append(f"{p}: error: {exc}")
+                issues.append(Issue(rel, "error", str(exc)))
     else:
         loaded = load_all(root, gitutil.WORKTREE, patterns)
-        issues += [f"{p}: error: {m}" for p, m in loaded.errors]
+        issues += [Issue(p, "error", m) for p, m in loaded.errors]
         for m in loaded.models:
             issues += validate(m, known)
-    errors = [i for i in issues if "error" in str(i)]
+    errors = [i for i in issues if i.level == "error"]
     if args.json:
-        _print_json([str(i) for i in issues])
+        _print_json([i.__dict__ for i in issues])
     else:
         for i in issues:
             print(i)
         print("valid" if not errors else f"{len(errors)} error(s)")
     return 1 if errors else 0
+
+
+def format_file(root: str, rel: str, check_only: bool) -> dict:
+    """Rewrite one model in Threat Composer's canonical form. Returns a summary dict."""
+    full = os.path.join(root, rel)
+    with open(full, encoding="utf-8", newline="") as fh:
+        text = fh.read()
+    res = canonical.format_text(text)
+    summary = {
+        "path": rel,
+        "changed": res.changed,
+        "written": False,
+        "errors": res.report.errors,
+        "uncertain": res.report.uncertain,
+        "text_rewrites": res.report.changes,
+    }
+    if res.text is not None and res.changed and not check_only:
+        with open(full, "w", encoding="utf-8", newline="") as fh:
+            fh.write(res.text)
+        summary["written"] = True
+    return summary
+
+
+def cmd_fmt(args) -> int:
+    root = _root()
+    cfg = config_mod.load(root)
+    if args.paths:
+        paths = [os.path.relpath(os.path.abspath(p), root).replace(os.sep, "/") for p in args.paths]
+    else:
+        paths = model_paths(root, gitutil.WORKTREE, cfg.models if cfg else ["**/*.tc.json"])
+    results = [format_file(root, p, args.check) for p in paths]
+    if args.json:
+        _print_json(results)
+    else:
+        for r in results:
+            if r["errors"]:
+                print(f"{r['path']}: Threat Composer would refuse this file; not formatted:")
+                print("".join(f"  {e}\n" for e in r["errors"]), end="")
+                continue
+            state = "formatted" if r["written"] else ("needs formatting" if r["changed"] else "ok")
+            print(f"{r['path']}: {state}")
+            for c in r["text_rewrites"]:
+                print(f"  text rewritten the way Threat Composer would: {c}")
+            for u in r["uncertain"]:
+                print(f"  left as is, rephrase (Threat Composer's rewrite is not reproduced): {u}")
+    bad = any(r["errors"] or r["uncertain"] for r in results)
+    unformatted = args.check and any(r["changed"] for r in results)
+    return 1 if bad or unformatted else 0
 
 
 def cmd_delta(args) -> int:
@@ -412,6 +462,12 @@ def build_parser() -> argparse.ArgumentParser:
         g.add_argument("--staged", action="store_true", help="compare the index instead of the working tree")
         sp.add_argument("--json", action="store_true")
 
+    s = sub.add_parser("fmt", help="rewrite models exactly as the Threat Composer editor would save them")
+    s.add_argument("paths", nargs="*")
+    s.add_argument("--check", action="store_true", help="report, don't write; exit 1 if anything would change")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_fmt)
+
     s = sub.add_parser("delta", help="semantic threat model diff")
     range_args(s)
     s.set_defaults(func=cmd_delta)
@@ -509,5 +565,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     except gitutil.GitError as exc:
         print(f"tdd: {exc}", file=sys.stderr)
         return 2
+    except ValueError as exc:
+        print(f"tdd: {exc}", file=sys.stderr)
+        return 1
     except BrokenPipeError:
         return 0

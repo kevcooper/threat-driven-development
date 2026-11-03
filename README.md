@@ -110,6 +110,23 @@ delta, declarations and per-threat state.
 CI reads policy from the **base** branch, so a PR cannot loosen its own gate. Check definitions
 come from the head so new checks can land with the code they test.
 
+## Works with the Threat Composer editor
+
+`tdd` writes `.tc.json` files in exactly the form the Threat Composer editor in the
+[AWS Toolkit for VS Code](https://marketplace.visualstudio.com/items?itemName=AmazonWebServices.aws-toolkit-vscode)
+saves them. Opening a model there to read it doesn't dirty the file. Without this, the editor
+rewrites files on open: it reorders keys, re-sorts lists as you browse the Threats, Mitigations
+and Assumptions views, strips `<tags>` and escapes `&`.
+
+- `tdd fmt` rewrites models into that form, and `tdd fmt --check` only reports.
+- CI fails on unformatted models (`policy.format`: `block`, `warn` or `off`).
+- When the agent edits a model, the plugin reformats it right away. If the agent wrote text
+  Threat Composer would strip or escape, the plugin asks it to rephrase instead.
+- The CLI refuses `<`, `>` and `&` in threat and mitigation text, and check names longer than 24
+  characters (tags are capped at 30).
+- Canonical files have no trailing newline. If an editor or a pre-commit end-of-file fixer adds
+  one, `tdd fmt --check` fails. Exclude `*.tc.json` from it (this repo's `.editorconfig` shows how).
+
 ## Configuration: `.tdd/config.json`
 
 ```json
@@ -118,7 +135,7 @@ come from the head so new checks can land with the code they test.
   "models": ["threats/**/*.tc.json"],
   "ignore": ["**/*.md", "docs/**", "LICENSE*", ".gitignore"],
   "declaration": { "min_length": 30 },
-  "policy": { "red": "block-new", "config_from_base": true },
+  "policy": { "red": "block-new", "config_from_base": true, "format": "block" },
   "hooks": { "commit_msg": "warn", "pre_push": "block", "claude_stop": "block" },
   "checks": {
     "invoice-scope": { "run": "pytest -q tests/test_invoices.py::test_cross_tenant_denied", "timeout": 300 }
@@ -141,6 +158,7 @@ tdd ci --base origin/main [--no-checks]  the full CI gate
 tdd declare "<reason>"
 tdd add-threat | add-mitigation | link | waive | add-check
 tdd validate [PATHS]
+tdd fmt [PATHS] [--check]                write models exactly as the Threat Composer editor does
 tdd hooks install|uninstall [--shared]
 ```
 
@@ -148,7 +166,7 @@ tdd hooks install|uninstall [--shared]
 
 `threats/tdd.tc.json` models threats to this tool (PR-body injection into CI, policy weakening,
 boilerplate declarations, commands smuggled through model files, hooks executing repo code,
-skipped local hooks, an agent gaming the Stop hook). Each mitigation links to a unit test, and
+skipped local hooks, an agent gaming the Stop hook, the editor silently rewriting a model). Each mitigation links to a unit test, and
 `.github/workflows/ci.yml` runs the action against this repository.
 
 See [docs/design.md](docs/design.md) for the design decisions behind v0.

@@ -15,95 +15,106 @@
       "id": "0acff9e0-59ce-4dba-87f7-859cae376dc5",
       "numericId": 1,
       "displayOrder": 1,
-      "content": "Branch protection on main requires the threat-gate job to pass and disallows direct pushes.",
       "metadata": [],
-      "tags": []
+      "tags": [],
+      "content": "Branch protection on main requires the threat-gate job to pass and disallows direct pushes."
     }
   ],
   "mitigations": [
     {
-      "id": "46e7beef-23ee-4ff5-8f92-ec333c2cc9df",
-      "numericId": 1,
-      "displayOrder": 1,
-      "content": "The action passes the PR body and refs to its script through env vars and never interpolates ${{ }} expressions inside run: blocks.",
+      "id": "6dfeb005-2e8f-4042-b516-5341a9e3fbaf",
+      "numericId": 8,
+      "displayOrder": 8,
       "metadata": [],
       "tags": [
-        "check:action-no-interpolation"
+        "check:tc-canonical-format"
       ],
-      "status": "mitigationIdentified"
-    },
-    {
-      "id": "76ba8b3b-47f0-4413-9668-5b59a350c8af",
-      "numericId": 2,
-      "displayOrder": 2,
-      "content": "tdd ci reads policy from the base branch; config changes take effect only after merge. Check definitions come from head.",
-      "metadata": [],
-      "tags": [
-        "check:policy-from-base"
-      ],
-      "status": "mitigationIdentified"
-    },
-    {
-      "id": "f1c6104d-ea92-45e1-84ff-7e9259e99953",
-      "numericId": 3,
-      "displayOrder": 3,
-      "content": "Declarations must meet a minimum length and are rejected when they match a boilerplate list.",
-      "metadata": [],
-      "tags": [
-        "check:declaration-quality"
-      ],
-      "status": "mitigationIdentified"
-    },
-    {
-      "id": "78d0f36f-d7cf-42ff-8380-2d970af0b1d4",
-      "numericId": 4,
-      "displayOrder": 4,
-      "content": "Mitigations reference checks by name with check:<name> tags; commands live only in .tdd/config.json, which is itself gated.",
-      "metadata": [],
-      "tags": [
-        "check:checks-by-name-only"
-      ],
-      "status": "mitigationIdentified"
-    },
-    {
-      "id": "f86e3c8e-257e-4603-a81a-1519c5160647",
-      "numericId": 5,
-      "displayOrder": 5,
-      "content": "Claude Code hooks never execute checks; they read only cached results. Checks run only on explicit tdd check/status --run-checks/ci.",
-      "metadata": [],
-      "tags": [
-        "check:hooks-do-not-run-checks"
-      ],
-      "status": "mitigationIdentified"
-    },
-    {
-      "id": "fcef11d5-05ee-477d-9b87-4038c3fa8eed",
-      "numericId": 6,
-      "displayOrder": 6,
-      "content": "The GitHub Action runs tdd ci on every pull request with full history, so skipping local hooks does not skip the gate.",
-      "metadata": [],
-      "tags": [
-        "check:ci-backstop"
-      ],
+      "content": "tdd writes models in the exact form the Threat Composer editor saves, refuses text it would strip or escape, reformats agent edits in the PostToolUse hook, and CI fails on unformatted models.",
       "status": "mitigationIdentified"
     },
     {
       "id": "64be7938-4f34-4444-b854-ebe80d2fa068",
       "numericId": 7,
       "displayOrder": 7,
-      "content": "Only semantic changes (threats, mitigations, assumptions, links) count as a delta; formatting and renumbering do not.",
       "metadata": [],
       "tags": [
         "check:formatting-not-delta"
       ],
+      "content": "Only semantic changes (threats, mitigations, assumptions, links) count as a delta; formatting and renumbering do not.",
+      "status": "mitigationIdentified"
+    },
+    {
+      "id": "fcef11d5-05ee-477d-9b87-4038c3fa8eed",
+      "numericId": 6,
+      "displayOrder": 6,
+      "metadata": [],
+      "tags": [
+        "check:ci-backstop"
+      ],
+      "content": "The GitHub Action runs tdd ci on every pull request with full history, so skipping local hooks does not skip the gate.",
+      "status": "mitigationIdentified"
+    },
+    {
+      "id": "f86e3c8e-257e-4603-a81a-1519c5160647",
+      "numericId": 5,
+      "displayOrder": 5,
+      "metadata": [],
+      "tags": [
+        "check:hooks-do-not-run-checks"
+      ],
+      "content": "Claude Code hooks never execute checks; they read only cached results. Checks run only on explicit tdd check/status --run-checks/ci.",
+      "status": "mitigationIdentified"
+    },
+    {
+      "id": "78d0f36f-d7cf-42ff-8380-2d970af0b1d4",
+      "numericId": 4,
+      "displayOrder": 4,
+      "metadata": [],
+      "tags": [
+        "check:checks-by-name-only"
+      ],
+      "content": "Mitigations reference checks by name with a check: tag followed by the check name; commands live only in .tdd/config.json, which is itself gated.",
+      "status": "mitigationIdentified"
+    },
+    {
+      "id": "f1c6104d-ea92-45e1-84ff-7e9259e99953",
+      "numericId": 3,
+      "displayOrder": 3,
+      "metadata": [],
+      "tags": [
+        "check:declaration-quality"
+      ],
+      "content": "Declarations must meet a minimum length and are rejected when they match a boilerplate list.",
+      "status": "mitigationIdentified"
+    },
+    {
+      "id": "76ba8b3b-47f0-4413-9668-5b59a350c8af",
+      "numericId": 2,
+      "displayOrder": 2,
+      "metadata": [],
+      "tags": [
+        "check:policy-from-base"
+      ],
+      "content": "tdd ci reads policy from the base branch; config changes take effect only after merge. Check definitions come from head.",
+      "status": "mitigationIdentified"
+    },
+    {
+      "id": "46e7beef-23ee-4ff5-8f92-ec333c2cc9df",
+      "numericId": 1,
+      "displayOrder": 1,
+      "metadata": [],
+      "tags": [
+        "check:action-no-interpolation"
+      ],
+      "content": "The action passes the PR body and refs to its script through env vars and never interpolates ${{ }} expressions inside run: blocks.",
       "status": "mitigationIdentified"
     }
   ],
   "assumptionLinks": [
     {
+      "type": "Threat",
       "assumptionId": "0acff9e0-59ce-4dba-87f7-859cae376dc5",
-      "linkedId": "b921a1a8-c760-4292-9bdb-25a1d07daf27",
-      "type": "Threat"
+      "linkedId": "b921a1a8-c760-4292-9bdb-25a1d07daf27"
     }
   ],
   "mitigationLinks": [
@@ -138,88 +149,47 @@
     {
       "mitigationId": "64be7938-4f34-4444-b854-ebe80d2fa068",
       "linkedId": "68ec81e8-4f09-4395-85bc-7ae753375867"
+    },
+    {
+      "mitigationId": "6dfeb005-2e8f-4042-b516-5341a9e3fbaf",
+      "linkedId": "d0f313cf-8ae0-4e9b-beef-b02cef7d4ca3"
     }
   ],
   "threats": [
     {
-      "id": "97dfd35c-0a0a-439f-8404-8cbed6980cfc",
-      "numericId": 1,
-      "displayOrder": 1,
-      "statement": "A pull request author who can edit the PR title or description can inject shell syntax that the gate's workflow step evaluates, which leads to arbitrary code execution in CI with the workflow token, resulting in reduced integrity and confidentiality of CI runner and repository token",
-      "threatSource": "pull request author",
-      "prerequisites": "who can edit the PR title or description",
-      "threatAction": "inject shell syntax that the gate's workflow step evaluates",
-      "threatImpact": "arbitrary code execution in CI with the workflow token",
-      "impactedGoal": [
-        "integrity",
-        "confidentiality"
-      ],
-      "impactedAssets": [
-        "CI runner",
-        "repository token"
-      ],
+      "id": "d0f313cf-8ae0-4e9b-beef-b02cef7d4ca3",
+      "numericId": 8,
+      "displayOrder": 8,
       "metadata": [
         {
           "key": "STRIDE",
           "value": [
-            "T",
-            "E"
+            "T"
           ]
         },
         {
           "key": "Priority",
-          "value": "High"
+          "value": "Medium"
         }
       ],
       "tags": [],
-      "status": "threatIdentified"
-    },
-    {
-      "id": "15e7595a-578a-4e03-a1d9-1e20938f5881",
-      "numericId": 2,
-      "displayOrder": 2,
-      "statement": "A contributor who can open a pull request can weaken .tdd/config.json policy in the same change it is gated on, which leads to code merging without a threat review, resulting in reduced integrity of threat review process",
-      "threatSource": "contributor",
-      "prerequisites": "who can open a pull request",
-      "threatAction": "weaken .tdd/config.json policy in the same change it is gated on",
-      "threatImpact": "code merging without a threat review",
+      "threatSource": "reviewer",
+      "prerequisites": "who opens a threat model in the Threat Composer VS Code editor",
+      "threatAction": "cause the editor to silently rewrite the file, stripping angle-bracket text and reordering keys",
+      "threatImpact": "lost threat model content and noisy diffs that hide real changes",
       "impactedGoal": [
         "integrity"
       ],
       "impactedAssets": [
-        "threat review process"
+        "threat model"
       ],
-      "metadata": [
-        {
-          "key": "STRIDE",
-          "value": [
-            "T",
-            "E"
-          ]
-        },
-        {
-          "key": "Priority",
-          "value": "High"
-        }
-      ],
-      "tags": [],
+      "statement": "A reviewer who opens a threat model in the Threat Composer VS Code editor can cause the editor to silently rewrite the file, stripping angle-bracket text and reordering keys, which leads to lost threat model content and noisy diffs that hide real changes, resulting in reduced integrity of threat model",
       "status": "threatIdentified"
     },
     {
-      "id": "a6e2a565-f217-4e2c-8ecb-a05f5f3650f8",
-      "numericId": 3,
-      "displayOrder": 3,
-      "statement": "A contributor who wants to skip threat review can submit a boilerplate no-threat-delta declaration, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
-      "threatSource": "contributor",
-      "prerequisites": "who wants to skip threat review",
-      "threatAction": "submit a boilerplate no-threat-delta declaration",
-      "threatImpact": "unreviewed attack surface reaching main",
-      "impactedGoal": [
-        "integrity"
-      ],
-      "impactedAssets": [
-        "threat review process"
-      ],
+      "id": "68ec81e8-4f09-4395-85bc-7ae753375867",
+      "numericId": 7,
+      "displayOrder": 7,
       "metadata": [
         {
           "key": "STRIDE",
@@ -234,77 +204,9 @@
         }
       ],
       "tags": [],
-      "status": "threatIdentified"
-    },
-    {
-      "id": "e641f765-fb37-4c0b-a2df-f6d9e352729c",
-      "numericId": 4,
-      "displayOrder": 4,
-      "statement": "A threat model author who can edit a .tc.json file can embed shell commands that CI runs as a check, which leads to arbitrary code execution in CI, resulting in reduced integrity of CI runner",
-      "threatSource": "threat model author",
-      "prerequisites": "who can edit a .tc.json file",
-      "threatAction": "embed shell commands that CI runs as a check",
-      "threatImpact": "arbitrary code execution in CI",
-      "impactedGoal": [
-        "integrity"
-      ],
-      "impactedAssets": [
-        "CI runner"
-      ],
-      "metadata": [
-        {
-          "key": "STRIDE",
-          "value": [
-            "E"
-          ]
-        },
-        {
-          "key": "Priority",
-          "value": "High"
-        }
-      ],
-      "tags": [],
-      "status": "threatIdentified"
-    },
-    {
-      "id": "fc8f6744-0597-467f-a33d-66869901da00",
-      "numericId": 5,
-      "displayOrder": 5,
-      "statement": "A malicious repository that a developer opens with the plugin installed can define check commands that the Claude Code hooks run automatically, which leads to code execution on the developer workstation, resulting in reduced confidentiality and integrity of developer workstation",
-      "threatSource": "malicious repository",
-      "prerequisites": "that a developer opens with the plugin installed",
-      "threatAction": "define check commands that the Claude Code hooks run automatically",
-      "threatImpact": "code execution on the developer workstation",
-      "impactedGoal": [
-        "confidentiality",
-        "integrity"
-      ],
-      "impactedAssets": [
-        "developer workstation"
-      ],
-      "metadata": [
-        {
-          "key": "STRIDE",
-          "value": [
-            "E"
-          ]
-        },
-        {
-          "key": "Priority",
-          "value": "High"
-        }
-      ],
-      "tags": [],
-      "status": "threatIdentified"
-    },
-    {
-      "id": "b921a1a8-c760-4292-9bdb-25a1d07daf27",
-      "numericId": 6,
-      "displayOrder": 6,
-      "statement": "A developer who pushes with --no-verify or without the hooks installed can merge code that carries no threat delta or declaration, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
-      "threatSource": "developer",
-      "prerequisites": "who pushes with --no-verify or without the hooks installed",
-      "threatAction": "merge code that carries no threat delta or declaration",
+      "threatSource": "coding agent",
+      "prerequisites": "that is blocked by the Stop hook",
+      "threatAction": "write a vague declaration or reformat the threat model to satisfy the gate",
       "threatImpact": "unreviewed attack surface reaching main",
       "impactedGoal": [
         "integrity"
@@ -312,6 +214,13 @@
       "impactedAssets": [
         "threat review process"
       ],
+      "statement": "A coding agent that is blocked by the Stop hook can write a vague declaration or reformat the threat model to satisfy the gate, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
+      "status": "threatIdentified"
+    },
+    {
+      "id": "b921a1a8-c760-4292-9bdb-25a1d07daf27",
+      "numericId": 6,
+      "displayOrder": 6,
       "metadata": [
         {
           "key": "STRIDE",
@@ -325,16 +234,9 @@
         }
       ],
       "tags": [],
-      "status": "threatIdentified"
-    },
-    {
-      "id": "68ec81e8-4f09-4395-85bc-7ae753375867",
-      "numericId": 7,
-      "displayOrder": 7,
-      "statement": "A coding agent that is blocked by the Stop hook can write a vague declaration or reformat the threat model to satisfy the gate, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
-      "threatSource": "coding agent",
-      "prerequisites": "that is blocked by the Stop hook",
-      "threatAction": "write a vague declaration or reformat the threat model to satisfy the gate",
+      "threatSource": "developer",
+      "prerequisites": "who pushes with --no-verify or without the hooks installed",
+      "threatAction": "merge code that carries no threat delta or declaration",
       "threatImpact": "unreviewed attack surface reaching main",
       "impactedGoal": [
         "integrity"
@@ -342,6 +244,74 @@
       "impactedAssets": [
         "threat review process"
       ],
+      "statement": "A developer who pushes with --no-verify or without the hooks installed can merge code that carries no threat delta or declaration, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
+      "status": "threatIdentified"
+    },
+    {
+      "id": "fc8f6744-0597-467f-a33d-66869901da00",
+      "numericId": 5,
+      "displayOrder": 5,
+      "metadata": [
+        {
+          "key": "STRIDE",
+          "value": [
+            "E"
+          ]
+        },
+        {
+          "key": "Priority",
+          "value": "High"
+        }
+      ],
+      "tags": [],
+      "threatSource": "malicious repository",
+      "prerequisites": "that a developer opens with the plugin installed",
+      "threatAction": "define check commands that the Claude Code hooks run automatically",
+      "threatImpact": "code execution on the developer workstation",
+      "impactedGoal": [
+        "confidentiality",
+        "integrity"
+      ],
+      "impactedAssets": [
+        "developer workstation"
+      ],
+      "statement": "A malicious repository that a developer opens with the plugin installed can define check commands that the Claude Code hooks run automatically, which leads to code execution on the developer workstation, resulting in reduced confidentiality and/or integrity of developer workstation",
+      "status": "threatIdentified"
+    },
+    {
+      "id": "e641f765-fb37-4c0b-a2df-f6d9e352729c",
+      "numericId": 4,
+      "displayOrder": 4,
+      "metadata": [
+        {
+          "key": "STRIDE",
+          "value": [
+            "E"
+          ]
+        },
+        {
+          "key": "Priority",
+          "value": "High"
+        }
+      ],
+      "tags": [],
+      "threatSource": "threat model author",
+      "prerequisites": "who can edit a .tc.json file",
+      "threatAction": "embed shell commands that CI runs as a check",
+      "threatImpact": "arbitrary code execution in CI",
+      "impactedGoal": [
+        "integrity"
+      ],
+      "impactedAssets": [
+        "CI runner"
+      ],
+      "statement": "A threat model author who can edit a .tc.json file can embed shell commands that CI runs as a check, which leads to arbitrary code execution in CI, resulting in reduced integrity of CI runner",
+      "status": "threatIdentified"
+    },
+    {
+      "id": "a6e2a565-f217-4e2c-8ecb-a05f5f3650f8",
+      "numericId": 3,
+      "displayOrder": 3,
       "metadata": [
         {
           "key": "STRIDE",
@@ -356,6 +326,81 @@
         }
       ],
       "tags": [],
+      "threatSource": "contributor",
+      "prerequisites": "who wants to skip threat review",
+      "threatAction": "submit a boilerplate no-threat-delta declaration",
+      "threatImpact": "unreviewed attack surface reaching main",
+      "impactedGoal": [
+        "integrity"
+      ],
+      "impactedAssets": [
+        "threat review process"
+      ],
+      "statement": "A contributor who wants to skip threat review can submit a boilerplate no-threat-delta declaration, which leads to unreviewed attack surface reaching main, resulting in reduced integrity of threat review process",
+      "status": "threatIdentified"
+    },
+    {
+      "id": "15e7595a-578a-4e03-a1d9-1e20938f5881",
+      "numericId": 2,
+      "displayOrder": 2,
+      "metadata": [
+        {
+          "key": "STRIDE",
+          "value": [
+            "T",
+            "E"
+          ]
+        },
+        {
+          "key": "Priority",
+          "value": "High"
+        }
+      ],
+      "tags": [],
+      "threatSource": "contributor",
+      "prerequisites": "who can open a pull request",
+      "threatAction": "weaken .tdd/config.json policy in the same change it is gated on",
+      "threatImpact": "code merging without a threat review",
+      "impactedGoal": [
+        "integrity"
+      ],
+      "impactedAssets": [
+        "threat review process"
+      ],
+      "statement": "A contributor who can open a pull request can weaken .tdd/config.json policy in the same change it is gated on, which leads to code merging without a threat review, resulting in reduced integrity of threat review process",
+      "status": "threatIdentified"
+    },
+    {
+      "id": "97dfd35c-0a0a-439f-8404-8cbed6980cfc",
+      "numericId": 1,
+      "displayOrder": 1,
+      "metadata": [
+        {
+          "key": "STRIDE",
+          "value": [
+            "T",
+            "E"
+          ]
+        },
+        {
+          "key": "Priority",
+          "value": "High"
+        }
+      ],
+      "tags": [],
+      "threatSource": "pull request author",
+      "prerequisites": "who can edit the PR title or description",
+      "threatAction": "inject shell syntax that the gate's workflow step evaluates",
+      "threatImpact": "arbitrary code execution in CI with the workflow token",
+      "impactedGoal": [
+        "integrity",
+        "confidentiality"
+      ],
+      "impactedAssets": [
+        "CI runner",
+        "repository token"
+      ],
+      "statement": "A pull request author who can edit the PR title or description can inject shell syntax that the gate's workflow step evaluates, which leads to arbitrary code execution in CI with the workflow token, resulting in reduced integrity and/or confidentiality of CI runner and repository token",
       "status": "threatIdentified"
     }
   ]

@@ -56,6 +56,26 @@ class ClaudeHookTests(RepoTestCase):
         self.assertIsNone(self.run_hook("post-tool-use", {"tool_name": "Write",
                                                           "tool_input": {"file_path": "app.py"}}))
 
+    def test_post_tool_use_reformats_to_threat_composer_form(self):
+        path = "threats/demo.tc.json"
+        self.write(path, json.dumps(self.read_json(path), indent=4, sort_keys=True))
+        out = self.run_hook("post-tool-use", {"tool_name": "Edit", "tool_input": {"file_path": path}})
+        self.assertIn("reformatted", out["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(self.tdd("fmt", "--check"), 0)
+        self.assertIsNone(self.run_hook("post-tool-use", {"tool_name": "Edit", "tool_input": {"file_path": path}}))
+
+    def test_post_tool_use_blocks_text_threat_composer_would_mangle(self):
+        self.tdd("add-threat", "--source", "user", "--action", "read data")
+        path = "threats/demo.tc.json"
+        data = self.read_json(path)
+        data["threats"][0]["threatAction"] = "read & write <thing>"
+        self.write_json(path, data)
+        before = open(os.path.join(self.root, path)).read()
+        out = self.run_hook("post-tool-use", {"tool_name": "Edit", "tool_input": {"file_path": path}})
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("Rephrase", out["reason"])
+        self.assertEqual(open(os.path.join(self.root, path)).read(), before)  # not silently rewritten
+
     def test_uninitialized_repo_is_silent(self):
         os.remove(os.path.join(self.root, ".tdd/config.json"))
         self.assertIsNone(self.run_hook("session-start", {}))

@@ -1,7 +1,8 @@
 """Claude Code hook handlers. Each reads the hook JSON payload on stdin.
 
   session-start  injects threat model status and the TDD workflow as context
-  post-tool-use  validates a .tc.json right after the agent edits it
+  post-tool-use  validates a .tc.json right after the agent edits it and puts it in
+                 Threat Composer's canonical form so the VS Code editor won't rewrite it
   stop           refuses to end the turn when the session changed code but the
                  branch carries neither a threat delta nor a declaration
 
@@ -20,7 +21,7 @@ from typing import Any, Dict, Optional, Tuple
 from threat_tdd import checks as checks_mod
 from threat_tdd import config as config_mod
 from threat_tdd import gate as gate_mod
-from threat_tdd import gitutil, globs, status
+from threat_tdd import canonical, gitutil, globs, status
 from threat_tdd.config import STATE_DIR
 from threat_tdd.model import load_all, parse, validate
 
@@ -129,28 +130,54 @@ def post_tool_use(payload: Dict[str, Any]) -> int:
     if rel.startswith(".."):
         return 0
 
-    problems = []
     if rel == config_mod.CONFIG_PATH:
         try:
             config_mod.load(root)
         except ValueError as exc:
-            problems.append(str(exc))
-    elif globs.match_any(rel, cfg.models):
-        try:
-            with open(full, encoding="utf-8") as fh:
-                model = parse(rel, fh.read())
-            problems += [str(i) for i in validate(model, cfg.checks.keys()) if i.level == "error"]
-        except (OSError, ValueError) as exc:
-            problems.append(f"{rel}: cannot parse: {exc}")
-    else:
+            _emit({"decision": "block", "reason": f"{config_mod.CONFIG_PATH} is invalid: {exc}"})
+        return 0
+    if not globs.match_any(rel, cfg.models):
         return 0
 
+    try:
+        with open(full, encoding="utf-8", newline="") as fh:
+            text = fh.read()
+    except OSError:
+        return 0
+    res = canonical.format_text(text)
+    r = res.report
+    problems = [f"Threat Composer would refuse to open this file: {e}" for e in r.errors]
+    if res.text is not None:
+        try:
+            model = parse(rel, res.text)
+            problems += [i.message for i in validate(model, cfg.checks.keys()) if i.level == "error"]
+        except ValueError as exc:
+            problems.append(str(exc))
     if problems:
         _emit({
             "decision": "block",
-            "reason": "The threat model file you just edited is invalid. Fix it before continuing:\n"
+            "reason": f"The threat model file you just edited ({rel}) is invalid. Fix it before continuing:\n"
             + "\n".join(f"- {p}" for p in problems),
         })
+        return 0
+    if r.changes or r.uncertain:
+        _emit({
+            "decision": "block",
+            "reason": f"{rel} contains text that Threat Composer rewrites when the file is opened "
+            "(it strips <tags> and escapes &, < and >). Rephrase these values without those characters, "
+            "e.g. 'and' instead of '&' and a plain word instead of '<placeholder>':\n"
+            + "\n".join(f"- {c}" for c in r.changes + r.uncertain),
+        })
+        return 0
+    if res.changed:
+        with open(full, "w", encoding="utf-8", newline="") as fh:
+            fh.write(res.text)
+        _emit({"hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": f"tdd reformatted {rel} into Threat Composer's canonical form (key order, "
+            "list order, 2-space JSON, no trailing newline) so opening it in the VS Code extension won't "
+            "rewrite it. Re-read the file before editing it again.",
+        }})
     return 0
 
 

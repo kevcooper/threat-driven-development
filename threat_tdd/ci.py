@@ -10,7 +10,21 @@ from threat_tdd import checks as checks_mod
 from threat_tdd import config as config_mod
 from threat_tdd import gate as gate_mod
 from threat_tdd import gitutil, status
-from threat_tdd.model import Issue, load_all, validate
+from threat_tdd.model import NOT_CANONICAL, Issue, load_all, validate
+
+FORMAT_MARKERS = (NOT_CANONICAL, "Threat Composer will rewrite", "markup Threat Composer")
+
+
+def _apply_format_policy(issues: List[Issue], policy: str) -> List[Issue]:
+    out = []
+    for i in issues:
+        if i.level == "warning" and i.message.startswith(FORMAT_MARKERS):
+            if policy == "off":
+                continue
+            if policy == "block":
+                i = Issue(i.path, "error", i.message)
+        out.append(i)
+    return out
 
 
 @dataclass
@@ -68,6 +82,7 @@ def run(
     issues: List[Issue] = [Issue(p, "error", m) for p, m in head_models.errors]
     for m in head_models.models:
         issues.extend(validate(m, cfg.checks.keys()))
+    issues = _apply_format_policy(issues, cfg.format_policy)
 
     check_results: Dict[str, checks_mod.CheckResult] = {}
     if run_checks:

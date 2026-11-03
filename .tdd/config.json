@@ -50,6 +50,10 @@
     "formatting-not-delta": {
       "run": "python3 -m unittest -q tests.test_gate.GateTests.test_formatting_only_change_is_not_a_delta",
       "description": "reformatting a model does not satisfy the gate"
+    },
+    "tc-canonical-format": {
+      "run": "python3 -m unittest -q tests.test_canonical tests.test_hooks.ClaudeHookTests.test_post_tool_use_reformats_to_threat_composer_form tests.test_hooks.ClaudeHookTests.test_post_tool_use_blocks_text_threat_composer_would_mangle",
+      "description": "models are written exactly as the Threat Composer editor saves them"
     }
   }
 }

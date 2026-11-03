@@ -28,7 +28,7 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(
             s,
             "An external actor with a stolen token can call the admin API, which leads to privilege "
-            "escalation, resulting in reduced confidentiality and integrity of tenant data",
+            "escalation, resulting in reduced confidentiality and/or integrity of tenant data",
         )
 
     def test_add_and_link(self):
@@ -44,19 +44,28 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(validate(m, ["c1"]), [])
 
     def test_validation_errors(self):
-        m = Model("t.tc.json", {
-            "threats": [{"id": "a", "statement": "s", "status": "threatResolvedNotUseful"},
-                        {"id": "a", "statement": ""}],
-            "mitigations": [{"id": "m", "content": "c", "tags": ["check:nope"]}],
-            "mitigationLinks": [{"mitigationId": "m", "linkedId": "zzz"}],
+        a, b, m = "a" * 36, "b" * 36, "m" * 36
+        base = {"schema": 1}
+        model = Model("t.tc.json", {**base,
+            "threats": [{"id": a, "numericId": 1, "statement": "s", "status": "threatResolvedNotUseful"},
+                        {"id": a, "numericId": 2, "statement": ""}],
+            "mitigations": [{"id": m, "numericId": 1, "content": "c", "tags": ["check:nope"]}],
+            "mitigationLinks": [{"mitigationId": m, "linkedId": b}],
         })
-        msgs = [str(i) for i in validate(m, ["other"])]
-        joined = "\n".join(msgs)
-        self.assertIn("duplicate threat id a", joined)
+        joined = "\n".join(str(i) for i in validate(model, ["other"]))
+        self.assertIn(f"duplicate threat id {a}", joined)
         self.assertIn("no statement", joined)
         self.assertIn("no Comments", joined)
-        self.assertIn("unknown threat zzz", joined)
+        self.assertIn(f"unknown threat {b}", joined)
         self.assertIn("references check 'nope'", joined)
+
+    def test_threat_composer_schema_errors(self):
+        model = Model("t.tc.json", {"schema": 1, "threats": [{"id": "a", "numericId": 1, "extra": 1}],
+                                    "mitigationLinks": [{"mitigationId": "short", "linkedId": "x"}]})
+        joined = "\n".join(str(i) for i in validate(model))
+        self.assertIn("would refuse", joined)
+        self.assertIn("unrecognized key 'extra'", joined)
+        self.assertIn("exactly 36", joined)
 
 
 if __name__ == "__main__":
