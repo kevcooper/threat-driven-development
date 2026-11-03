@@ -82,10 +82,30 @@ faith. The reviewer still has to read it. The CI summary shows every declaration
 
 ## Git hooks
 
-`commit-msg` defaults to warn because TDD often commits a red threat first. `pre-push` defaults to
+`post-commit` tags commits that resolve mitigations and never fails a commit. During a rebase it
+does nothing, and `tdd tag` settles tags afterwards. `commit-msg` defaults to warn because TDD
+often commits a red threat first. `pre-push` defaults to
 block and evaluates the whole branch against the merge base. Both can be bypassed with
 `--no-verify`, which is why CI exists. Known gap: `commit-msg` cannot see an `--amend`'s full
 change, only the newly staged part. Pre-push and CI cover it.
+
+## Mitigation tags mark where each mitigation landed
+
+Because a mitigation's status flips to resolved in the same commit as its implementation, that
+commit is a precise, permanent marker. `tdd` puts an annotated tag there,
+`mitigation/<model>/M-<n>`, whose message records the threats, checks and priority. That answers
+"when and how was this mitigated?" from git alone, without the model file.
+
+- **Where tags come from:** the post-commit hook tags new commits. `tdd tag` covers ranges, and
+  CI uses it on `main`.
+- **History rewrites:** a tag moves when its commit is rewritten (amend, rebase, squash: the same
+  event on a new commit). A merged branch commit keeps its tag. A later re-resolution, after a
+  regression, gets `-rN`, judged by whether the earlier tag is already in mainline history.
+  Different mitigations that would share a name (same model file name in two folders) are told
+  apart by the mitigation id recorded in the tag.
+- **Safety:** tag names come only from the slugged model file name and the numeric id, and are
+  checked with `git check-ref-format`. Tag text goes to git on stdin. Only a push-to-main job
+  gets a write token (T-12).
 
 ## Mitigation priority is derived, not entered
 

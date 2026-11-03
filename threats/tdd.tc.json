@@ -22,6 +22,18 @@
   ],
   "mitigations": [
     {
+      "id": "59af2d93-e4d2-44b6-89be-8485aabe0c66",
+      "numericId": 12,
+      "displayOrder": 12,
+      "metadata": [],
+      "tags": [
+        "check:tag-safety",
+        "priority:high"
+      ],
+      "content": "Tag names are slugged from the model file name and numeric id and checked with git check-ref-format; tag text goes to git on stdin; only the push-to-main job has a write token, and the action tags only on push events.",
+      "status": "mitigationResolved"
+    },
+    {
       "id": "04250ef3-6c8d-42e3-a528-f150e4829f1e",
       "numericId": 11,
       "displayOrder": 11,
@@ -209,9 +221,47 @@
     {
       "mitigationId": "04250ef3-6c8d-42e3-a528-f150e4829f1e",
       "linkedId": "9289c4fd-4163-46c1-b619-d80d180b409a"
+    },
+    {
+      "mitigationId": "59af2d93-e4d2-44b6-89be-8485aabe0c66",
+      "linkedId": "cf93e3b5-7d37-41b9-96ad-9149e7c4d99c"
     }
   ],
   "threats": [
+    {
+      "id": "cf93e3b5-7d37-41b9-96ad-9149e7c4d99c",
+      "numericId": 12,
+      "displayOrder": 12,
+      "metadata": [
+        {
+          "key": "STRIDE",
+          "value": [
+            "T",
+            "E"
+          ]
+        },
+        {
+          "key": "Priority",
+          "value": "High"
+        }
+      ],
+      "tags": [
+        "risk:mitigate"
+      ],
+      "threatSource": "contributor",
+      "prerequisites": "who controls a model file name or mitigation text",
+      "threatAction": "inject options, refs or shell syntax into the git commands tdd runs to tag mitigations, or obtain the write token that tagging needs from a pull request run",
+      "threatImpact": "tampered repository history or arbitrary code execution in CI",
+      "impactedGoal": [
+        "integrity"
+      ],
+      "impactedAssets": [
+        "repository",
+        "CI runner"
+      ],
+      "statement": "A contributor who controls a model file name or mitigation text can inject options, refs or shell syntax into the git commands tdd runs to tag mitigations, or obtain the write token that tagging needs from a pull request run, which leads to tampered repository history or arbitrary code execution in CI, resulting in reduced integrity of repository and CI runner",
+      "status": "threatResolved"
+    },
     {
       "id": "9289c4fd-4163-46c1-b619-d80d180b409a",
       "numericId": 11,

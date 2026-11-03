@@ -5,6 +5,7 @@
 #       hooks:
 #         - id: tdd-commit-msg
 #         - id: tdd-pre-push
+#         - id: tdd-post-commit
 - id: tdd-commit-msg
   name: threat delta or declaration (commit)
   entry: tdd git-hook commit-msg
@@ -17,5 +18,12 @@
   entry: tdd git-hook pre-push
   language: python
   stages: [pre-push]
+  pass_filenames: false
+  always_run: true
+- id: tdd-post-commit
+  name: tag commits that resolve mitigations
+  entry: tdd git-hook post-commit
+  language: python
+  stages: [post-commit]
   pass_filenames: false
   always_run: true

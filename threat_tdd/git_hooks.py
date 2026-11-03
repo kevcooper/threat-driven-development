@@ -1,4 +1,5 @@
-"""Portable git hooks: commit-msg (advisory by default) and pre-push (blocking by default).
+"""Portable git hooks: commit-msg (advisory by default), pre-push (blocking by default)
+and post-commit (tags commits that resolve mitigations).
 
 They are deliberately thin: each one shells out to ``tdd git-hook <name>`` so the
 same logic runs in hooks, in Claude Code, and in CI. ``git commit --no-verify``
@@ -17,7 +18,7 @@ from threat_tdd import gate as gate_mod
 from threat_tdd import gitutil
 
 MARKER = "# installed by tdd (threat driven development)"
-HOOKS = ("commit-msg", "pre-push")
+HOOKS = ("commit-msg", "pre-push", "post-commit")
 ZERO = "0" * 40
 
 TEMPLATE = """#!/bin/sh
@@ -73,6 +74,8 @@ def install(root: str, shared: bool = False, force: bool = False) -> List[str]:
             fh.write(TEMPLATE.format(marker=MARKER, name=name, recorded=recorded))
         os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         written.append(os.path.relpath(path, root))
+    # Annotated mitigation tags travel with an ordinary `git push`.
+    gitutil.git(["config", "push.followTags", "true"], cwd=root)
     return written
 
 
@@ -178,6 +181,24 @@ def pre_push(root: str, args: List[str], stdin_text: Optional[str] = None) -> in
     return 0
 
 
+def post_commit(root: str, args: List[str]) -> int:
+    """Tag the commit just made if it resolved any mitigations. Never fails the commit."""
+    from threat_tdd import tagging
+
+    cfg = config_mod.load(root)
+    if cfg is None or not tagging.tags_enabled(cfg):
+        return 0
+    git_dir = gitutil.git(["rev-parse", "--git-dir"], cwd=root).strip()
+    git_dir = git_dir if os.path.isabs(git_dir) else os.path.join(root, git_dir)
+    if any(os.path.exists(os.path.join(git_dir, d)) for d in ("rebase-merge", "rebase-apply")):
+        return 0  # tags are settled once the rewrite finishes (tdd tag)
+    for r in tagging.resolved_in(root, cfg, "HEAD"):
+        r = tagging.apply(root, cfg, tagging.plan(root, cfg, r))
+        if r.action in ("created", "moved"):
+            sys.stderr.write(f"tdd: {r.action} tag {r.tag} ({r.label} resolved in this commit)\n")
+    return 0
+
+
 def main(name: str, args: List[str]) -> int:
     root = gitutil.repo_root(os.getcwd())
     if not root or os.environ.get("TDD_DISABLE"):
@@ -187,6 +208,8 @@ def main(name: str, args: List[str]) -> int:
             return commit_msg(root, args)
         if name == "pre-push":
             return pre_push(root, args)
+        if name == "post-commit":
+            return post_commit(root, args)
     except (gitutil.GitError, ValueError) as exc:
         sys.stderr.write(f"tdd {name}: {exc}\n")
         return 0

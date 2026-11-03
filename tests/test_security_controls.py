@@ -74,6 +74,24 @@ class HooksDoNotRunChecksTests(RepoTestCase):
         self.assertFalse(os.path.exists(os.path.join(self.root, "pwned")))
 
 
+class TagWriteTokenTests(unittest.TestCase):
+    """T: tagging needs a write token; a pull request must never get one."""
+
+    def test_write_permission_only_on_push_to_main(self):
+        with open(os.path.join(REPO, ".github", "workflows", "ci.yml")) as fh:
+            text = fh.read()
+        jobs = re.split(r"\n  (?=[a-z][a-z-]*:\n)", text.split("\njobs:\n", 1)[1])
+        writers = [j for j in jobs if "contents: write" in j]
+        self.assertEqual(len(writers), 1)
+        self.assertIn("if: github.event_name == 'push' && github.ref == 'refs/heads/main'", writers[0])
+        self.assertIn("permissions:\n  contents: read", text)  # workflow default
+
+    def test_action_tags_only_on_push(self):
+        with open(os.path.join(REPO, "action.yml")) as fh:
+            text = fh.read()
+        self.assertIn('[ "$TDD_TAG" = "true" ] && [ "$TDD_EVENT" = "push" ]', text)
+
+
 class CIBackstopTests(unittest.TestCase):
     """T: a developer skips local hooks with --no-verify."""
 
