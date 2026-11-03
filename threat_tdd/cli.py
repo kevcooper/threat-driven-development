@@ -492,7 +492,10 @@ def cmd_tag(args) -> int:
         _print_json([r.as_dict() for r in done])
     else:
         for r in done:
-            print(f"{r.action:12} {r.tag}  ({r.label} resolved in {r.commit[:10]})")
+            if r.action == "skipped":
+                print(f"{'skipped':12} {r.label} in {r.model_path}: id {r.mitigation_id!r} isn't safe as a tag name")
+            else:
+                print(f"{r.action:12} {r.tag}  ({r.label} resolved in {r.commit[:10]})")
         if not done:
             print("no mitigations resolved in that range")
     return 0

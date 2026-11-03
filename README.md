@@ -151,17 +151,20 @@ pushes to `main`, so pull requests never get a write token:
 ### Mitigation tags
 
 The commit that resolves a mitigation is where it landed, since the status flips in the same
-commit as the code. `tdd` marks that commit with an annotated git tag:
+commit as the code. `tdd` marks that commit with an annotated git tag named after the
+mitigation's id, the UUID Threat Composer assigns. The id is unique across models and never
+changes when mitigations are renumbered:
 
 ```console
-$ git show mitigation/billing/M-2
-tag mitigation/billing/M-2
+$ git show 3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
+tag 3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
 M-2 resolved: Invoice lookups are scoped by the session tenant
 
 Model: threats/billing.tc.json
 Threat: T-4 (High): An authenticated tenant user who can guess an invoice id can fetch ...
 Checks: invoice-scope
 Priority: high
+Mitigation id: 3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
 ```
 
 - **Created by:** the `post-commit` hook (`tdd hooks install`), which also sets
@@ -173,9 +176,11 @@ Priority: high
   `tag-mitigations: "true"` (above). Branch tags then move to the squashed commit. With merge
   commits, the branch commit that did the work keeps its tag.
 - **Regressions:** a mitigation that is resolved, regresses and is resolved again gets
-  `mitigation/billing/M-2-r2` on the later commit.
-- **Turn it off** with `"tags": {"mitigations": false}` in `.tdd/config.json`, or change the
-  prefix with `"prefix"`.
+  `<id>-r2` on the later commit.
+- **Configuration:** `"tags": {"prefix": "mitigation"}` in `.tdd/config.json` puts tags under
+  `mitigation/<id>`. `"mitigations": false` turns tagging off.
+- **Unusual ids:** an id that isn't safe as a git ref name (anything beyond letters, digits,
+  `.`, `_`, `-`) is skipped with a warning.
 
 ## What the gate checks
 

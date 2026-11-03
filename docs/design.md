@@ -92,19 +92,20 @@ change, only the newly staged part. Pre-push and CI cover it.
 ## Mitigation tags mark where each mitigation landed
 
 Because a mitigation's status flips to resolved in the same commit as its implementation, that
-commit is a precise, permanent marker. `tdd` puts an annotated tag there,
-`mitigation/<model>/M-<n>`, whose message records the threats, checks and priority. That answers
+commit is a precise, permanent marker. `tdd` puts an annotated tag there, named after the
+mitigation's id (the UUID Threat Composer assigns), whose message records the threats, checks and
+priority. The id is unique across models and survives renumbering and renamed files, which
+`M-<n>` labels don't. That answers
 "when and how was this mitigated?" from git alone, without the model file.
 
 - **Where tags come from:** the post-commit hook tags new commits. `tdd tag` covers ranges, and
   CI uses it on `main`.
 - **History rewrites:** a tag moves when its commit is rewritten (amend, rebase, squash: the same
   event on a new commit). A merged branch commit keeps its tag. A later re-resolution, after a
-  regression, gets `-rN`, judged by whether the earlier tag is already in mainline history.
-  Different mitigations that would share a name (same model file name in two folders) are told
-  apart by the mitigation id recorded in the tag.
-- **Safety:** tag names come only from the slugged model file name and the numeric id, and are
-  checked with `git check-ref-format`. Tag text goes to git on stdin. Only a push-to-main job
+  regression, gets `<id>-rN`, judged by whether the earlier tag is already in mainline history.
+- **Safety:** the id comes from model content, so only ids made of letters, digits, `.`, `_` and
+  `-` become tag names, and `git check-ref-format` checks them too. Anything else is skipped with
+  a warning. Tag text goes to git on stdin. Only a push-to-main job
   gets a write token (T-12).
 
 ## Mitigation priority is derived, not entered

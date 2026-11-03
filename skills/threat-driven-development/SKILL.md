@@ -82,7 +82,8 @@ it's a regression: the threat turns red and CI fails.
 
 ## Mitigation tags
 
-The commit that resolves a mitigation gets an annotated git tag, `mitigation/<model>/M-<n>`. The
+The commit that resolves a mitigation gets an annotated git tag named after the mitigation's id
+(its UUID). The
 post-commit hook creates it, and CI tags `main` after squash merges. To get it right, commit the
 `tdd sync` status change together with the implementation. Don't create, move or delete these
 tags by hand; `tdd tag` manages them.

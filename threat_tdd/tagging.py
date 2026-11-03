@@ -2,12 +2,16 @@
 
 A mitigation is resolved in the same commit as the code that implements it
 (``tdd sync`` flips its status), so that commit is where the mitigation landed.
-``tdd`` marks it with an annotated tag::
+``tdd`` marks it with an annotated tag named after the mitigation's id, the UUID
+Threat Composer assigns::
 
-    mitigation/<model>/M-<n>        e.g. mitigation/billing/M-3
+    3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
+
+The id is unique across models and survives renumbering and renamed files. An
+optional ``tags.prefix`` in ``.tdd/config.json`` puts tags under ``<prefix>/<id>``.
 
 The tag message records the mitigation, the threats it covers, its checks and its
-priority, so ``git show mitigation/billing/M-3`` answers "when and how was this
+priority, so ``git show <id>`` answers "when and how was this
 mitigated?".
 
 - A post-commit hook tags new commits (``tdd hooks install``).
@@ -15,11 +19,12 @@ mitigated?".
 - An amended or rebased commit moves the tag to the new commit, since it's the
   same event, rewritten.
 - If a mitigation regresses and is resolved again later, the later commit gets
-  ``…-r2``, ``…-r3`` and so on.
+  ``<id>-r2``, ``<id>-r3`` and so on.
 
-Ref names come from the model's file name (slugified) and the numeric id, are
-checked with ``git check-ref-format``, and tag text goes in on stdin, never on a
-command line.
+The id comes from model content, so only ids made of letters, digits, ``.``, ``_``
+and ``-`` (not starting with ``-`` or ``.``) become tags, and the name is also
+checked with ``git check-ref-format``. Anything else is skipped with a warning.
+Tag text goes to git on stdin, never on a command line.
 """
 
 from __future__ import annotations
@@ -53,28 +58,30 @@ class Resolution:
     mitigation_id: str
     label: str  # M-3
     tag: str = ""
-    action: str = ""  # created | moved | exists | would-create | would-move
+    action: str = ""  # created | moved | exists | would-create | would-move | skipped
 
     def as_dict(self) -> Dict[str, str]:
         return self.__dict__.copy()
 
 
 def tag_prefix(cfg: Config) -> str:
-    return str((cfg.data.get("tags") or {}).get("prefix", "mitigation")).strip("/") or "mitigation"
+    return str((cfg.data.get("tags") or {}).get("prefix", "")).strip().strip("/")
 
 
 def tags_enabled(cfg: Config) -> bool:
     return bool((cfg.data.get("tags") or {}).get("mitigations", True))
 
 
-def model_slug(path: str) -> str:
-    name = os.path.basename(path)
-    name = name[: -len(".tc.json")] if name.endswith(".tc.json") else os.path.splitext(name)[0]
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip(".-") or "model"
+SAFE_ID = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]*$")
 
 
-def base_tag(cfg: Config, model_path: str, label: str) -> str:
-    return f"{tag_prefix(cfg)}/{model_slug(model_path)}/{label}"
+def base_tag(cfg: Config, mitigation_id: str) -> Optional[str]:
+    """The tag name for a mitigation: its id (optionally under a prefix), or None if unsafe."""
+    if not isinstance(mitigation_id, str) or not SAFE_ID.match(mitigation_id) or ".." in mitigation_id \
+            or mitigation_id.endswith((".", ".lock")):
+        return None
+    prefix = tag_prefix(cfg)
+    return f"{prefix}/{mitigation_id}" if prefix else mitigation_id
 
 
 def _valid_ref(root: str, tag: str) -> bool:
@@ -161,7 +168,10 @@ def plan(root: str, cfg: Config, r: Resolution) -> Resolution:
                                                       did the work keeps its tag)
     - tag on a commit not in this history          -> move (amend, rebase, squash)
     """
-    base = base_tag(cfg, r.model_path, r.label)
+    base = base_tag(cfg, r.mitigation_id)
+    if base is None:
+        r.action = "skipped"
+        return r
     parent = _first_parent(root, r.commit)
     n = 1
     while True:
@@ -188,8 +198,9 @@ def plan(root: str, cfg: Config, r: Resolution) -> Resolution:
 
 
 def apply(root: str, cfg: Config, r: Resolution, dry_run: bool = False) -> Resolution:
-    if not _valid_ref(root, r.tag):
-        raise ValueError(f"'{r.tag}' is not a valid tag name")
+    if r.action == "skipped" or not _valid_ref(root, r.tag):
+        r.action = "skipped"
+        return r
     if r.action == "exists":
         return r
     if dry_run:

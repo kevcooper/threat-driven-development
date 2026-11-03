@@ -1,5 +1,6 @@
 """Annotated git tags on the commits that resolve mitigations."""
 
+import json
 import os
 import subprocess
 import tempfile
@@ -33,6 +34,9 @@ class TaggingTests(RepoTestCase):
     def tags(self):
         return self.git("tag", "-l").split()
 
+    def mid(self, path=PATH):
+        return self.read_json(path)["mitigations"][0]["id"]
+
     def cfg(self):
         return config_mod.load(self.root)
 
@@ -42,14 +46,17 @@ class TaggingTests(RepoTestCase):
     def test_tag_command_tags_resolving_commit(self):
         sha = self.implement()
         self.assertEqual(self.tdd("tag"), 0)
-        self.assertIn("created      mitigation/demo/M-1", self.last_out)
-        self.assertEqual(self.tag_commit("mitigation/demo/M-1"), sha)
-        body = self.git("tag", "-l", "--format=%(contents)", "mitigation/demo/M-1")
+        mid = self.mid()
+        self.assertIn(f"created      {mid}", self.last_out)
+        self.assertEqual(self.tags(), [mid])
+        self.assertEqual(self.tag_commit(mid), sha)
+        body = self.git("tag", "-l", "--format=%(contents)", mid)
         self.assertIn("M-1 resolved: CSRF tokens", body)
         self.assertIn("Threat: T-1 (High): A user can forge a request", body)
         self.assertIn("Checks: ok", body)
         self.assertIn("Priority: high", body)
-        self.assertEqual(self.git("cat-file", "-t", "mitigation/demo/M-1").strip(), "tag")  # annotated
+        self.assertIn(f"Mitigation id: {mid}", body)
+        self.assertEqual(self.git("cat-file", "-t", mid).strip(), "tag")  # annotated
         self.tdd("tag")
         self.assertIn("exists", self.last_out)
 
@@ -69,8 +76,8 @@ class TaggingTests(RepoTestCase):
         proc = subprocess.run(["git", "commit", "-qm", "implement\n\nNo-Threat-Delta: test fixture commit only."],
                               cwd=self.root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("created tag mitigation/demo/M-1", proc.stderr)
-        self.assertEqual(self.tag_commit("mitigation/demo/M-1"), self.git("rev-parse", "HEAD").strip())
+        self.assertIn(f"created tag {self.mid()}", proc.stderr)
+        self.assertEqual(self.tag_commit(self.mid()), self.git("rev-parse", "HEAD").strip())
         self.assertEqual(self.git("config", "push.followTags").strip(), "true")
 
     def test_amend_moves_tag(self):
@@ -80,8 +87,8 @@ class TaggingTests(RepoTestCase):
         amended = self.commit("implement CSRF tokens (amended)", amend=True)
         self.tdd("tag")
         self.assertIn("moved", self.last_out)
-        self.assertEqual(self.tag_commit("mitigation/demo/M-1"), amended)
-        self.assertEqual(self.tags(), ["mitigation/demo/M-1"])
+        self.assertEqual(self.tag_commit(self.mid()), amended)
+        self.assertEqual(self.tags(), [self.mid()])
 
     def test_regression_then_resolve_again_gets_suffix(self):
         first = self.implement()
@@ -91,8 +98,8 @@ class TaggingTests(RepoTestCase):
         self.commit("regressed")
         second = self.implement("fix it again")
         self.tdd("tag")
-        self.assertEqual(self.tag_commit("mitigation/demo/M-1"), first)
-        self.assertEqual(self.tag_commit("mitigation/demo/M-1-r2"), second)
+        self.assertEqual(self.tag_commit(self.mid()), first)
+        self.assertEqual(self.tag_commit(self.mid() + "-r2"), second)
 
     def test_merge_commit_keeps_branch_tag(self):
         main_before = self.git("rev-parse", "main").strip()
@@ -102,8 +109,8 @@ class TaggingTests(RepoTestCase):
         self.git("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
         self.tdd("tag", "--base", main_before, "--head", "main")
         self.assertIn("exists", self.last_out)
-        self.assertEqual(self.tags(), ["mitigation/demo/M-1"])
-        self.assertEqual(self.tag_commit("mitigation/demo/M-1"), work)
+        self.assertEqual(self.tags(), [self.mid()])
+        self.assertEqual(self.tag_commit(self.mid()), work)
 
     def test_squash_merge_moves_tag_to_main(self):
         main_before = self.git("rev-parse", "main").strip()
@@ -114,7 +121,7 @@ class TaggingTests(RepoTestCase):
         squashed = self.commit("squashed feature")
         self.tdd("tag", "--base", main_before, "--head", "main")
         self.assertIn("moved", self.last_out)
-        self.assertEqual(self.tag_commit("mitigation/demo/M-1"), squashed)
+        self.assertEqual(self.tag_commit(self.mid()), squashed)
 
     def test_dry_run_and_disable(self):
         self.implement()
@@ -147,15 +154,40 @@ class TaggingTests(RepoTestCase):
         self.commit("second model")
         self.implement()
         self.tdd("tag")
-        self.assertEqual(sorted(self.tags()), ["mitigation/demo/M-1", "mitigation/demo/M-1-r2"])
+        # ids are unique, so the two M-1s get distinct tags without any suffix
+        self.assertEqual(sorted(self.tags()), sorted([self.mid(), self.mid("threats/other/demo.tc.json")]))
 
-    def test_slug_and_ref_check(self):
-        self.assertEqual(tagging.model_slug("threats/My Service!.tc.json"), "My-Service")
-        self.assertEqual(tagging.model_slug("threats/..evil.tc.json"), "evil")
-        self.assertEqual(tagging.model_slug("x/--force.tc.json"), "force")
-        self.assertEqual(tagging.model_slug("x/$(id).tc.json"), "id")
-        self.assertFalse(tagging._valid_ref(self.root, "mitigation/a..b/M-1"))
-        self.assertTrue(tagging._valid_ref(self.root, "mitigation/demo/M-1"))
+    def test_unsafe_ids_are_not_tags(self):
+        cfg = self.cfg()
+        for bad in ["--force", "-n", "a..b", "x/y", "$(id)", "a b", ".hidden", "x.lock", "", None]:
+            self.assertIsNone(tagging.base_tag(cfg, bad), bad)
+        self.assertEqual(tagging.base_tag(cfg, "3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d"),
+                         "3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d")
+        self.assertFalse(tagging._valid_ref(self.root, "a..b"))
+
+    def test_unsafe_id_skipped_with_warning(self):
+        data = self.read_json(PATH)
+        old = data["mitigations"][0]["id"]
+        data["mitigations"][0]["id"] = "--force"
+        for link in data["mitigationLinks"]:
+            if link["mitigationId"] == old:
+                link["mitigationId"] = "--force"
+        self.write(PATH, json.dumps(data))
+        self.write("implemented", "yes\n")
+        data["mitigations"][0]["status"] = "mitigationResolved"
+        self.write(PATH, json.dumps(data))
+        self.commit("hostile id")
+        self.assertEqual(self.tdd("tag"), 0)
+        self.assertIn("skipped", self.last_out)
+        self.assertEqual(self.tags(), [])
+
+    def test_prefix(self):
+        cfg = self.read_json(".tdd/config.json")
+        cfg["tags"] = {"prefix": "mitigation"}
+        self.write_json(".tdd/config.json", cfg)
+        self.implement()
+        self.tdd("tag")
+        self.assertEqual(self.tags(), [f"mitigation/{self.mid()}"])
 
     def test_model_text_cannot_reach_a_shell(self):
         data = self.read_json(PATH)
@@ -165,7 +197,7 @@ class TaggingTests(RepoTestCase):
         self.commit("hostile text")
         self.implement()
         self.assertEqual(self.tdd("tag"), 0, self.last_err)
-        body = self.git("tag", "-l", "--format=%(contents)", "mitigation/demo/M-1")
+        body = self.git("tag", "-l", "--format=%(contents)", self.mid())
         self.assertIn("$(touch pwned) `touch pwned2`", body)
         self.assertFalse(os.path.exists(os.path.join(self.root, "pwned")))
         self.assertFalse(os.path.exists(os.path.join(self.root, "pwned2")))
@@ -179,4 +211,4 @@ class TaggingTests(RepoTestCase):
         self.git("push", "-q", "origin", "feature")
         self.assertEqual(self.tdd("tag", "--push"), 0, self.last_err)
         remote_tags = subprocess.run(["git", "tag", "-l"], cwd=remote, stdout=subprocess.PIPE, text=True).stdout
-        self.assertIn("mitigation/demo/M-1", remote_tags)
+        self.assertIn(self.mid(), remote_tags)
