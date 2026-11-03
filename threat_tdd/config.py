@@ -48,6 +48,10 @@ DEFAULTS: Dict[str, Any] = {
     },
     # name -> {"run": "<shell command>", "timeout": seconds, "description": "..."}
     "checks": {},
+    # Annotated git tags on the commit that resolves each mitigation, named after the
+    # mitigation's id (its UUID), or <prefix>/<id> when a prefix is set. Created by the
+    # post-commit hook and `tdd tag`.
+    "tags": {"mitigations": True, "prefix": ""},
     # Lint rule codes to skip (see `tdd lint --rules`), e.g. ["TDD130", "TDD131"].
     "lint": {"disable": []},
 }

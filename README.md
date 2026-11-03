@@ -101,12 +101,13 @@ created .tdd/config.json
 created threats/<repo>.tc.json
 installed .git/hooks/commit-msg
 installed .git/hooks/pre-push
+installed .git/hooks/post-commit
 ```
 
 `tdd hooks install --shared` writes the hooks to a committed `.githooks/` directory instead and
 sets `core.hooksPath`. Existing hooks are preserved and chained. Teams on the
-[pre-commit](https://pre-commit.com) framework can use the `tdd-commit-msg` and `tdd-pre-push`
-hook ids from `.pre-commit-hooks.yaml`.
+[pre-commit](https://pre-commit.com) framework can use the `tdd-commit-msg`, `tdd-pre-push` and
+`tdd-post-commit` hook ids from `.pre-commit-hooks.yaml`.
 
 ### GitHub Action
 
@@ -128,6 +129,58 @@ jobs:
 
 Then make `threat-gate` a required status check on `main`. The job writes a summary table of the
 delta, declarations and per-threat state.
+
+To tag `main` after merges (see [Mitigation tags](#mitigation-tags)), add a job that runs only on
+pushes to `main`, so pull requests never get a write token:
+
+```yaml
+  tag-mitigations:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: kevcooper/threat-driven-development@main
+        with:
+          tag-mitigations: "true"
+```
+
+### Mitigation tags
+
+The commit that resolves a mitigation is where it landed, since the status flips in the same
+commit as the code. `tdd` marks that commit with an annotated git tag named after the
+mitigation's id, the UUID Threat Composer assigns. The id is unique across models and never
+changes when mitigations are renumbered:
+
+```console
+$ git show 3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
+tag 3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
+M-2 resolved: Invoice lookups are scoped by the session tenant
+
+Model: threats/billing.tc.json
+Threat: T-4 (High): An authenticated tenant user who can guess an invoice id can fetch ...
+Checks: invoice-scope
+Priority: high
+Mitigation id: 3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
+```
+
+- **Created by:** the `post-commit` hook (`tdd hooks install`), which also sets
+  `push.followTags` so the tags go out with a normal `git push`. Run `tdd tag` to tag by hand:
+  `--base REV` covers a range, `--all` the whole history, and `--dry-run` and `--push` do what
+  they say.
+- **Amends and rebases:** an amended or rebased commit moves the tag to the new commit.
+- **Squash merges** create new commits on `main`, so tag `main` in CI with
+  `tag-mitigations: "true"` (above). Branch tags then move to the squashed commit. With merge
+  commits, the branch commit that did the work keeps its tag.
+- **Regressions:** a mitigation that is resolved, regresses and is resolved again gets
+  `<id>-r2` on the later commit.
+- **Configuration:** `"tags": {"prefix": "mitigation"}` in `.tdd/config.json` puts tags under
+  `mitigation/<id>`. `"mitigations": false` turns tagging off.
+- **Unusual ids:** an id that isn't safe as a git ref name (anything beyond letters, digits,
+  `.`, `_`, `-`) is skipped with a warning.
 
 ## What the gate checks
 
@@ -224,6 +277,7 @@ tdd declare "<reason>"
 tdd add-threat [--strategy S] | add-mitigation | link | waive | add-check
 tdd validate [PATHS]
 tdd fmt [PATHS] [--check]                write models exactly as the Threat Composer editor does
+tdd tag [--base REV | --all] [--dry-run] [--push]   git-tag commits that resolved mitigations
 tdd hooks install|uninstall [--shared]
 ```
 
@@ -233,7 +287,7 @@ tdd hooks install|uninstall [--shared]
 boilerplate declarations, commands smuggled through model files, hooks executing repo code,
 skipped local hooks, an agent gaming the Stop hook, the editor silently rewriting a model, a
 mitigation status that misstates what is implemented, a threat resolved without a recorded risk
-strategy, a model the editor refuses to open). Each mitigation links to a unit test, and
+strategy, a model the editor refuses to open, injection or token leaks through mitigation tagging). Each mitigation links to a unit test, and
 `.github/workflows/ci.yml` runs the action against this repository.
 
 See [docs/design.md](docs/design.md) for the design decisions behind v0.

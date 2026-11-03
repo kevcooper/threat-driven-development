@@ -474,6 +474,33 @@ def cmd_schema(args) -> int:
     return 0
 
 
+def cmd_tag(args) -> int:
+    from threat_tdd import tagging
+
+    root = _root()
+    cfg = _cfg(root)
+    head = args.head
+    if args.base or args.all:
+        done = tagging.tag_range(root, cfg, None if args.all else args.base, head, args.dry_run)
+    else:  # just this commit
+        commit = gitutil.rev_parse(root, head)
+        done = [tagging.apply(root, cfg, tagging.plan(root, cfg, r), args.dry_run)
+                for r in tagging.resolved_in(root, cfg, commit)]
+    if args.push and not args.dry_run:
+        tagging.push(root, done, args.remote)
+    if args.json:
+        _print_json([r.as_dict() for r in done])
+    else:
+        for r in done:
+            if r.action == "skipped":
+                print(f"{'skipped':12} {r.label} in {r.model_path}: id {r.mitigation_id!r} isn't safe as a tag name")
+            else:
+                print(f"{r.action:12} {r.tag}  ({r.label} resolved in {r.commit[:10]})")
+        if not done:
+            print("no mitigations resolved in that range")
+    return 0
+
+
 def cmd_ci(args) -> int:
     root = _root()
     base = args.base
@@ -776,6 +803,17 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--print", action="store_true", help="print the schema")
     g.add_argument("--export", metavar="PATH", help="copy the schema to PATH (e.g. for editor validation)")
     s.set_defaults(func=cmd_schema)
+
+    s = sub.add_parser("tag", help="git-tag the commits that resolved mitigations")
+    s.add_argument("--head", default="HEAD")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--base", help="tag every commit in base..head (first parent), e.g. for CI on main")
+    g.add_argument("--all", action="store_true", help="walk the whole history up to head")
+    s.add_argument("--dry-run", action="store_true")
+    s.add_argument("--push", action="store_true", help="push created or moved tags")
+    s.add_argument("--remote", default="origin")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_tag)
 
     s = sub.add_parser("add-check", help="define a named check command in .tdd/config.json")
     s.add_argument("name")

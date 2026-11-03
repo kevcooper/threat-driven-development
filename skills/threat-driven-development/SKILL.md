@@ -80,6 +80,14 @@ Statuses record progress. `tdd sync` sets them from the checks, and CI fails whe
 A failing check on an in-progress mitigation is the expected red test. On a resolved mitigation
 it's a regression: the threat turns red and CI fails.
 
+## Mitigation tags
+
+The commit that resolves a mitigation gets an annotated git tag named after the mitigation's id
+(its UUID). The
+post-commit hook creates it, and CI tags `main` after squash merges. To get it right, commit the
+`tdd sync` status change together with the implementation. Don't create, move or delete these
+tags by hand; `tdd tag` manages them.
+
 ## Mitigation priority
 
 Every mitigation carries one `priority:high`, `priority:medium` or `priority:low` tag: the
@@ -157,4 +165,5 @@ tdd delta                          semantic diff of the threat model vs the base
 tdd check [--threat T-n]           run linked checks
 tdd link --mitigation M-2 --threat T-5 --check name
 tdd fmt [--check]                  rewrite models exactly as the Threat Composer editor saves them
+tdd tag [--base REV | --all] [--dry-run]  git-tag commits that resolved mitigations
 ```

@@ -18,6 +18,13 @@ inputs:
     description: Read policy from the PR head instead of the base branch. Leave false unless you know why.
     required: false
     default: "false"
+  tag-mitigations:
+    description: >-
+      On push events, add annotated git tags, named after each mitigation's id, to the commits that
+      resolved mitigations, and push them. Needs `permissions: contents: write`. Use it on main,
+      where squash merges create new commits.
+    required: false
+    default: "false"
   working-directory:
     description: Repository root, if not the workspace root.
     required: false
@@ -43,6 +50,8 @@ runs:
         TDD_RUN_CHECKS: ${{ inputs.run-checks }}
         TDD_TRUST_HEAD: ${{ inputs.trust-head-config }}
         TDD_ACTION_PATH: ${{ github.action_path }}
+        TDD_TAG: ${{ inputs.tag-mitigations }}
+        TDD_EVENT: ${{ github.event_name }}
       run: |
         set -euo pipefail
         if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
@@ -68,4 +77,10 @@ runs:
         code=$?
         set -e
         if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+        if [ "$code" -eq 0 ] && [ "$TDD_TAG" = "true" ] && [ "$TDD_EVENT" = "push" ]; then
+          git config user.name >/dev/null || git config user.name "github-actions[bot]"
+          git config user.email >/dev/null || git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags --quiet origin "+refs/tags/*:refs/tags/*" || true
+          python3 "$TDD_ACTION_PATH/bin/tdd" tag --base "$base" --head HEAD --push
+        fi
         exit "$code"

@@ -33,3 +33,20 @@ jobs:
       - run: git config --global user.email ci@example.com && git config --global user.name ci
       # Dogfood: this repository is gated by its own action.
       - uses: ./
+
+  tag-mitigations:
+    # Tags the main-branch commits that resolved mitigations (tag name = mitigation id).
+    # Runs only on pushes to main, so pull request runs, including forks, never get a
+    # write token.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git config --global user.email ci@example.com && git config --global user.name ci
+      - uses: ./
+        with:
+          tag-mitigations: "true"
