@@ -50,6 +50,22 @@
     "formatting-not-delta": {
       "run": "python3 -m unittest -q tests.test_gate.GateTests.test_formatting_only_change_is_not_a_delta",
       "description": "reformatting a model does not satisfy the gate"
+    },
+    "tc-canonical-format": {
+      "run": "python3 -m unittest -q tests.test_canonical tests.test_hooks.ClaudeHookTests.test_post_tool_use_reformats_to_threat_composer_form tests.test_hooks.ClaudeHookTests.test_post_tool_use_blocks_text_threat_composer_would_mangle",
+      "description": "models are written exactly as the Threat Composer editor saves them"
+    },
+    "mitigation-status": {
+      "run": "python3 -m unittest -q tests.test_status_ci.MitigationStatusTests tests.test_status_ci.StatusTests.test_planned_vs_resolved_failing_checks",
+      "description": "mitigation status matches its checks"
+    },
+    "risk-strategy-tags": {
+      "run": "python3 -m unittest -q tests.test_status_ci.StrategyTests tests.test_status_ci.MitigationStatusTests.test_threat_not_resolved_without_strategy tests.test_schema.LintCommandTests.test_schema_only",
+      "description": "a threat resolves only under one explicit risk strategy tag"
+    },
+    "official-schema": {
+      "run": "python3 -m unittest -q tests.test_schema",
+      "description": "models validate against the vendored Threat Composer schema"
     }
   }
 }

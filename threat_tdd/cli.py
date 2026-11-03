@@ -11,7 +11,7 @@ from typing import List, Optional
 from threat_tdd import __version__
 from threat_tdd import checks as checks_mod
 from threat_tdd import ci as ci_mod
-from threat_tdd import claude_hooks, declare, git_hooks, gitutil, status
+from threat_tdd import canonical, claude_hooks, declare, git_hooks, gitutil, status
 from threat_tdd import config as config_mod
 from threat_tdd import delta as delta_mod
 from threat_tdd import gate as gate_mod
@@ -108,6 +108,19 @@ def cmd_init(args) -> int:
     return 0
 
 
+def _progress_table(models) -> List[str]:
+    """Mitigation progress, by Threat Composer status."""
+    order = ["mitigationIdentified", "mitigationInProgress", "mitigationResolved", "mitigationResolvedWillNotAction"]
+    names = {"mitigationIdentified": "identified", "mitigationInProgress": "in progress",
+             "mitigationResolved": "resolved", "mitigationResolvedWillNotAction": "will not action"}
+    tally = {k: 0 for k in order}
+    for m in models:
+        for mit in m.mitigations:
+            tally[str(mit.get("status") or "mitigationIdentified")] = tally.get(str(mit.get("status")), 0) + 1
+    total = sum(tally.values())
+    return [f"{total} mitigations: " + ", ".join(f"{tally[k]} {names[k]}" for k in order)] if total else []
+
+
 def cmd_status(args) -> int:
     root = _root()
     cfg = _cfg(root)
@@ -118,54 +131,107 @@ def cmd_status(args) -> int:
     else:
         results = checks_mod.load_cache(root)
     states = status.evaluate(loaded.models, results, cfg.checks.keys())
+    issues = status.status_issues(loaded.models, results, cfg.checks.keys())
     if args.json:
         _print_json({"counts": status.counts(states), "threats": [s.as_dict() for s in states],
-                     "parse_errors": loaded.errors})
+                     "status_issues": [i.message for i in issues], "parse_errors": loaded.errors})
         return 0
     for path, msg in loaded.errors:
         print(f"{path}: {msg}")
-    sym = {"green": "GREEN ", "unverified": "UNVER ", "red": "RED   ", "waived": "WAIVED"}
+    sym = {"green": "GREEN ", "unverified": "UNVER ", "red": "RED   ", "handled": "HANDLD", "dismissed": "DISMSD"}
     current = None
     for s in states:
         if s.path != current:
             current = s.path
             print(f"\n{s.path}")
+        strategy = f" [risk:{s.strategy}]" if s.strategy else ""
         print(f"  {sym[s.state]} {s.label:6} {s.statement[:100]}")
-        print(f"         {s.reason}" + (f"  [mitigations: {', '.join(s.mitigations)}]" if s.mitigations else ""))
-    c = status.counts(states)
-    print(f"\n{len(states)} threats: {c['red']} red, {c['unverified']} unverified, {c['green']} green, {c['waived']} waived")
-    for note in status.inconsistencies(states):
-        print(f"warning: {note}")
-    if not args.run_checks and c["unverified"]:
+        print(f"         {s.reason}{strategy}" + (f"  [mitigations: {', '.join(s.mitigations)}]" if s.mitigations else ""))
+    print("\n" + status.summary(states))
+    for line in _progress_table(loaded.models):
+        print(line)
+    for i in issues:
+        print(f"status: {i.path}: {i.message}")
+    if not args.run_checks and status.counts(states)[status.UNVERIFIED]:
         print("run `tdd status --run-checks` to verify linked checks")
     return 0
 
 
 def cmd_validate(args) -> int:
+    from threat_tdd.model import Issue
     root = _root()
     cfg = config_mod.load(root)
     patterns = cfg.models if cfg else ["**/*.tc.json"]
     known = cfg.checks.keys() if cfg else None
-    issues = []
+    issues: List[Issue] = []
     if args.paths:
         for p in args.paths:
+            rel = os.path.relpath(os.path.abspath(p), root).replace(os.sep, "/")
             try:
-                issues += validate(load_file(root, os.path.relpath(os.path.abspath(p), root)), known)
+                issues += validate(load_file(root, rel), known)
             except (ValueError, OSError) as exc:
-                issues.append(f"{p}: error: {exc}")
+                issues.append(Issue(rel, "error", str(exc)))
     else:
         loaded = load_all(root, gitutil.WORKTREE, patterns)
-        issues += [f"{p}: error: {m}" for p, m in loaded.errors]
+        issues += [Issue(p, "error", m) for p, m in loaded.errors]
         for m in loaded.models:
             issues += validate(m, known)
-    errors = [i for i in issues if "error" in str(i)]
+    errors = [i for i in issues if i.level == "error"]
     if args.json:
-        _print_json([str(i) for i in issues])
+        _print_json([i.__dict__ for i in issues])
     else:
         for i in issues:
             print(i)
         print("valid" if not errors else f"{len(errors)} error(s)")
     return 1 if errors else 0
+
+
+def format_file(root: str, rel: str, check_only: bool) -> dict:
+    """Rewrite one model in Threat Composer's canonical form. Returns a summary dict."""
+    full = os.path.join(root, rel)
+    with open(full, encoding="utf-8", newline="") as fh:
+        text = fh.read()
+    res = canonical.format_text(text)
+    summary = {
+        "path": rel,
+        "changed": res.changed,
+        "written": False,
+        "errors": res.report.errors,
+        "uncertain": res.report.uncertain,
+        "text_rewrites": res.report.changes,
+    }
+    if res.text is not None and res.changed and not check_only:
+        with open(full, "w", encoding="utf-8", newline="") as fh:
+            fh.write(res.text)
+        summary["written"] = True
+    return summary
+
+
+def cmd_fmt(args) -> int:
+    root = _root()
+    cfg = config_mod.load(root)
+    if args.paths:
+        paths = [os.path.relpath(os.path.abspath(p), root).replace(os.sep, "/") for p in args.paths]
+    else:
+        paths = model_paths(root, gitutil.WORKTREE, cfg.models if cfg else ["**/*.tc.json"])
+    results = [format_file(root, p, args.check) for p in paths]
+    if args.json:
+        _print_json(results)
+    else:
+        for r in results:
+            if r["errors"]:
+                print(f"{r['path']}: Threat Composer would refuse this file; not formatted:")
+                print("".join(f"  {e}\n" for e in r["errors"]), end="")
+                continue
+            state = "formatted" if r["written"] else ("needs formatting" if r["changed"] else "ok")
+            print(f"{r['path']}: {state}")
+            for c in r["text_rewrites"]:
+                print(f"  text rewritten the way Threat Composer would: {c}")
+            for u in r["uncertain"]:
+                print(f"  left as is, rephrase (Threat Composer's rewrite is not reproduced): {u}")
+    bad = any(r["errors"] or r["uncertain"] for r in results)
+    unformatted = args.check and any(r["changed"] for r in results)
+    return 1 if bad or unformatted else 0
 
 
 def cmd_delta(args) -> int:
@@ -218,13 +284,173 @@ def cmd_check(args) -> int:
         print("no checks to run")
         return 0
     res = checks_mod.run_many(cfg, names, echo=None if args.json else print)
+    outcomes = {k: v.outcome for k, v in res.items()}
+    applied, remaining = _sync(root, cfg, loaded.models, outcomes, write=args.resolve)
     if args.json:
-        _print_json([r.as_dict() for r in res.values()])
+        _print_json({"checks": [r.as_dict() for r in res.values()],
+                     "status_changes": [f"{i.label}: {i.current} -> {i.expected}" for i in applied],
+                     "status_issues": [i.message for i in remaining]})
     else:
         for r in res.values():
             if r.outcome != "pass":
                 print(f"\n--- {r.name} ({r.outcome}) ---\n{r.output[-3000:]}")
+        _print_sync(applied, remaining)
     return 0 if all(r.outcome == "pass" for r in res.values()) else 1
+
+
+def _sync(root, cfg, models, outcomes, write: bool):
+    """Compute status issues; when ``write``, apply lagging/progress fixes and save."""
+    issues = status.status_issues(models, outcomes, cfg.checks.keys())
+    if not write:
+        return [], issues
+    applied = status.apply_status_fixes(models, issues)
+    for path in sorted({i.path for i in applied}):
+        next(m for m in models if m.path == path).save(root)
+    return applied, [i for i in issues if i not in applied]
+
+
+def _print_sync(applied, remaining) -> None:
+    for i in applied:
+        print(f"{i.path}: {i.label} {i.current} -> {i.expected} ({i.detail})")
+    if applied:
+        print("commit the model change together with the work it records")
+    for i in remaining:
+        print(f"{i.path}: {i.message}")
+
+
+def cmd_sync(args) -> int:
+    root = _root()
+    cfg = _cfg(root)
+    loaded = load_all(root, gitutil.WORKTREE, cfg.models)
+    outcomes = {}
+    if not args.no_checks:
+        res = checks_mod.run_many(cfg, status.linked_checks(loaded.models), echo=None if args.json else print)
+        outcomes = {k: v.outcome for k, v in res.items()}
+    applied, remaining = _sync(root, cfg, loaded.models, outcomes, write=not args.dry_run)
+    if args.json:
+        _print_json({"status_changes": [f"{i.label}: {i.current} -> {i.expected}" for i in applied],
+                     "status_issues": [i.message for i in remaining]})
+    else:
+        if args.dry_run:
+            print("\n".join(f"{i.path}: {i.message}" for i in remaining) or "statuses are in sync")
+        else:
+            _print_sync(applied, remaining)
+            if not applied and not remaining:
+                print("statuses are in sync")
+    return 1 if any(i.kind == "overclaim" for i in remaining) else 0
+
+
+def cmd_strategy(args) -> int:
+    root = _root()
+    cfg = _cfg(root)
+    m = _pick_model(root, cfg, args.file)
+    t = m.find_threat(args.threat)
+    m.set_strategy(t, args.strategy, " ".join(args.reason) if args.reason else None)
+    m.save(root)
+    label = f"T-{t.get('numericId')}"
+    if args.strategy == "mitigate":
+        print(f"{label} tagged risk:mitigate in {m.path}. It resolves once a linked mitigation's checks pass "
+              "(`tdd sync` sets threatResolved).")
+    else:
+        print(f"{label} tagged risk:{args.strategy} and resolved in {m.path}; the reason is in its Comments")
+    return 0
+
+
+def cmd_dismiss(args) -> int:
+    root = _root()
+    cfg = _cfg(root)
+    reason = " ".join(args.reason)
+    problem = declare.judge(reason, cfg.min_declaration_length)
+    if problem:
+        raise ValueError(problem)
+    m = _pick_model(root, cfg, args.file)
+    t = m.find_threat(args.threat)
+    m.dismiss(t, reason)
+    m.save(root)
+    print(f"T-{t.get('numericId')} marked not applicable (threatResolvedNotUseful) in {m.path}")
+    return 0
+
+
+def cmd_progress(args) -> int:
+    root = _root()
+    cfg = _cfg(root)
+    m = _pick_model(root, cfg, args.file)
+    mit = m.find_mitigation(args.mitigation)
+    reason = " ".join(args.reason) if args.reason else None
+    if args.state == "resolved":
+        from threat_tdd.model import check_names
+        names = check_names(mit)
+        if not names:
+            raise ValueError("a mitigation is resolved when its checks pass; add a check first "
+                             "(tdd link --mitigation ... --check <name>)")
+        res = checks_mod.run_many(cfg, names, echo=print)
+        failing = [n for n, r in res.items() if r.outcome != "pass"]
+        if failing:
+            raise ValueError(f"not resolved: check(s) failing: {', '.join(failing)}")
+    if args.state == "will-not-action" and reason:
+        problem = declare.judge(reason, cfg.min_declaration_length)
+        if problem:
+            raise ValueError(problem)
+    m.set_progress(mit, args.state, reason)
+    m.save(root)
+    print(f"M-{mit.get('numericId')} -> {mit['status']} in {m.path}")
+    return 0
+
+
+def cmd_lint(args) -> int:
+    from threat_tdd import lint as lint_mod
+
+    if args.rules:
+        for code, (level, title) in lint_mod.RULES.items():
+            print(f"{code:7} {level:8} {title}")
+        return 0
+    root = _root()
+    cfg = config_mod.load(root)
+    patterns = cfg.models if cfg else ["**/*.tc.json"]
+    known = cfg.checks.keys() if cfg else None
+    disable = list((cfg.data.get("lint") or {}).get("disable", []) if cfg else []) + _split(args.disable)
+    rules = lint_mod.SCHEMA_ONLY if args.schema_only else None
+    models, errors = [], []
+    if args.paths:
+        for p in args.paths:
+            rel = os.path.relpath(os.path.abspath(p), root).replace(os.sep, "/")
+            try:
+                models.append(load_file(root, rel))
+            except (ValueError, OSError) as exc:
+                errors.append(lint_mod.LintIssue("TC002", "error", rel, "", f"cannot parse: {exc}"))
+    else:
+        loaded = load_all(root, gitutil.WORKTREE, patterns)
+        models = loaded.models
+        errors = [lint_mod.LintIssue("TC002", "error", p, "", m) for p, m in loaded.errors]
+    issues = errors + lint_mod.lint(models, known, rules, disable)
+    n_err = sum(i.level == "error" for i in issues)
+    n_warn = len(issues) - n_err
+    if args.json:
+        _print_json([i.as_dict() for i in issues])
+    else:
+        for i in issues:
+            print(i)
+        print(f"{len(models)} model(s): {n_err} error(s), {n_warn} warning(s)")
+    return 1 if n_err or (args.strict and n_warn) else 0
+
+
+def cmd_schema(args) -> int:
+    from threat_tdd import jsonschema_lite
+
+    path = jsonschema_lite.THREAT_COMPOSER_SCHEMA
+    if args.print:
+        with open(path, encoding="utf-8") as fh:
+            sys.stdout.write(fh.read())
+        return 0
+    if args.export:
+        import shutil
+        shutil.copyfile(path, args.export)
+        print(f"wrote {args.export}")
+        return 0
+    print(path)
+    print("Official Threat Composer JSON Schema (vendored; see threat_tdd/schemas/README.md).")
+    print("Validate models against it with `tdd lint --schema-only` or `tdd validate`.")
+    return 0
 
 
 def cmd_ci(args) -> int:
@@ -282,6 +508,8 @@ def cmd_add_threat(args) -> int:
         _split(args.goal), _split(args.asset), stride=_split(args.stride) or None,
         priority=args.priority, comments=args.comments, tags=_split(args.tag),
     )
+    if args.strategy:
+        m.set_strategy(t, args.strategy, args.strategy_reason)
     m.save(root)
     print(f"added T-{t['numericId']} to {m.path}: {t['statement']}")
     print("state: red (no mitigation yet). Next: tdd add-mitigation --threat "
@@ -330,6 +558,7 @@ def cmd_link(args) -> int:
 
 
 def cmd_waive(args) -> int:
+    """Accept the risk: risk:accept tag, Comments reason, threatResolved."""
     root = _root()
     cfg = _cfg(root)
     reason = " ".join(args.reason)
@@ -338,13 +567,10 @@ def cmd_waive(args) -> int:
         print(f"tdd waive: {problem}", file=sys.stderr)
         return 1
     m = _pick_model(root, cfg, args.file)
-    try:
-        t = m.find_threat(args.threat)
-    except KeyError as exc:
-        raise SystemExit(f"tdd: {exc.args[0]}")
-    m.waive(t, reason)
+    t = m.find_threat(args.threat)
+    m.set_strategy(t, "accept", reason)
     m.save(root)
-    print(f"waived T-{t.get('numericId')} in {m.path}")
+    print(f"T-{t.get('numericId')} tagged risk:accept and resolved in {m.path}")
     return 0
 
 
@@ -400,7 +626,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_status)
 
-    s = sub.add_parser("validate", help="validate threat model files")
+    s = sub.add_parser("validate", help="schema, editor-compatibility and reference errors (`tdd lint` for all rules)")
     s.add_argument("paths", nargs="*")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_validate)
@@ -411,6 +637,12 @@ def build_parser() -> argparse.ArgumentParser:
         g.add_argument("--head", help="head commit (default: the working tree)")
         g.add_argument("--staged", action="store_true", help="compare the index instead of the working tree")
         sp.add_argument("--json", action="store_true")
+
+    s = sub.add_parser("fmt", help="rewrite models exactly as the Threat Composer editor would save them")
+    s.add_argument("paths", nargs="*")
+    s.add_argument("--check", action="store_true", help="report, don't write; exit 1 if anything would change")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_fmt)
 
     s = sub.add_parser("delta", help="semantic threat model diff")
     range_args(s)
@@ -426,6 +658,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("names", nargs="*")
     s.add_argument("--threat", help="only checks linked to this threat")
     s.add_argument("--all", action="store_true", help="every check in the config, linked or not")
+    s.add_argument("--resolve", action="store_true",
+                   help="also update statuses to match (same as `tdd sync`)")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_check)
 
@@ -455,6 +689,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--priority", choices=["High", "Medium", "Low", "high", "medium", "low"])
     s.add_argument("--comments")
     s.add_argument("--tag", action="append")
+    s.add_argument("--strategy", choices=["mitigate", "accept", "transfer", "avoid"],
+                   help="risk handling strategy, recorded as a risk:<strategy> tag")
+    s.add_argument("--strategy-reason", help="required for accept, transfer and avoid")
     s.set_defaults(func=cmd_add_threat)
 
     s = sub.add_parser("add-mitigation", help="append a mitigation, link it to threats and checks")
@@ -472,11 +709,52 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--check", action="append")
     s.set_defaults(func=cmd_link)
 
-    s = sub.add_parser("waive", help="accept a threat's risk with a written reason")
+    s = sub.add_parser("waive", help="accept a threat's risk (same as `tdd strategy accept`)")
     s.add_argument("--file")
     s.add_argument("--threat", required=True)
     s.add_argument("reason", nargs="+")
     s.set_defaults(func=cmd_waive)
+
+    s = sub.add_parser("strategy", help="record a threat's risk handling strategy as a risk:<strategy> tag")
+    s.add_argument("--file")
+    s.add_argument("--threat", required=True)
+    s.add_argument("strategy", choices=["mitigate", "accept", "transfer", "avoid"])
+    s.add_argument("reason", nargs="*", help="required for accept, transfer and avoid")
+    s.set_defaults(func=cmd_strategy)
+
+    s = sub.add_parser("dismiss", help="mark a threat not applicable (threatResolvedNotUseful) with a reason")
+    s.add_argument("--file")
+    s.add_argument("--threat", required=True)
+    s.add_argument("reason", nargs="+")
+    s.set_defaults(func=cmd_dismiss)
+
+    s = sub.add_parser("progress", help="set a mitigation's progress status")
+    s.add_argument("--file")
+    s.add_argument("--mitigation", required=True)
+    s.add_argument("state", choices=["identified", "in-progress", "resolved", "will-not-action"])
+    s.add_argument("reason", nargs="*", help="required for will-not-action")
+    s.set_defaults(func=cmd_progress)
+
+    s = sub.add_parser("sync", help="run checks and move statuses along with the work")
+    s.add_argument("--no-checks", action="store_true", help="don't run checks (strategy statuses only)")
+    s.add_argument("--dry-run", action="store_true", help="report, don't write")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_sync)
+
+    s = sub.add_parser("lint", help="validate against the Threat Composer schema and lint the threat model")
+    s.add_argument("paths", nargs="*")
+    s.add_argument("--schema-only", action="store_true", help="only schema and editor-compatibility rules")
+    s.add_argument("--strict", action="store_true", help="warnings fail too")
+    s.add_argument("--disable", action="append", help="rule codes to skip, e.g. TDD130,TDD131")
+    s.add_argument("--rules", action="store_true", help="list the rules")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_lint)
+
+    s = sub.add_parser("schema", help="the vendored official Threat Composer JSON Schema")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--print", action="store_true", help="print the schema")
+    g.add_argument("--export", metavar="PATH", help="copy the schema to PATH (e.g. for editor validation)")
+    s.set_defaults(func=cmd_schema)
 
     s = sub.add_parser("add-check", help="define a named check command in .tdd/config.json")
     s.add_argument("name")
@@ -509,5 +787,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     except gitutil.GitError as exc:
         print(f"tdd: {exc}", file=sys.stderr)
         return 2
+    except (ValueError, KeyError) as exc:
+        print(f"tdd: {exc.args[0] if exc.args else exc}", file=sys.stderr)
+        return 1
     except BrokenPipeError:
         return 0

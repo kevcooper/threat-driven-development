@@ -20,14 +20,45 @@ All three call the same `tdd` CLI (Python 3.9+, standard library only, nothing t
 ```console
 $ tdd add-threat --source "authenticated tenant user" --prerequisites "who can guess an invoice id" \
     --action "fetch another tenant's invoice" --impact "disclosure of billing data" \
-    --goal confidentiality --asset invoices --stride I --priority High
+    --goal confidentiality --asset invoices --stride I --priority High --strategy mitigate
 added T-4 ... state: red (no mitigation yet)
 
 $ tdd add-mitigation --threat T-4 --content "Invoice lookups are scoped by the session tenant" --check invoice-scope
 $ tdd add-check invoice-scope --run "pytest -q tests/test_invoices.py::test_cross_tenant_denied"
-$ tdd status --run-checks
-  GREEN  T-4    An authenticated tenant user who can guess an invoice id can fetch another tenant's invoice ...
+$ tdd sync
+threats/billing.tc.json: M-2 mitigationInProgress -> mitigationResolved (its checks pass (invoice-scope))
+threats/billing.tc.json: T-4 threatIdentified -> threatResolved (it is green (verified by invoice-scope))
+$ git commit -am "Scope invoice lookups by tenant"   # code and status changes in one commit
 ```
+
+### Risk handling strategy
+
+A threat is resolved only under exactly one explicit strategy tag. This matches Threat Composer's
+own definition of "Resolved": all agreed risk responses (mitigation, transfer, avoidance,
+acceptance) are complete.
+
+| tag | resolved when |
+|---|---|
+| `risk:mitigate` | a linked mitigation's checks all pass |
+| `risk:accept` | a reason is recorded in the threat's Comments |
+| `risk:transfer` | a reason names who carries the risk |
+| `risk:avoid` | a reason says what was removed or redesigned |
+
+Set it with `tdd strategy --threat T-4 <strategy> ["reason"]`. A threat that doesn't apply at all
+is dismissed instead: `tdd dismiss --threat T-4 "reason"` sets Threat Composer's "Not Useful".
+
+### Progress tracking
+
+Threat Composer's status fields track progress, and `tdd sync` keeps them in step with the checks:
+
+- mitigations: `mitigationIdentified` (planned) → `mitigationInProgress` (its check exists and
+  fails) → `mitigationResolved` (its checks pass). `tdd progress` sets in-progress or
+  will-not-action (with a reason) by hand. `resolved` is only ever set when the checks pass.
+- threats: `threatIdentified` → `threatResolved` once green or handled under a strategy tag.
+
+The statuses change in the same commit as the work. CI (`policy.status_sync`) fails when a status
+lags behind the checks, or claims more than they prove. A failing check on an in-progress
+mitigation is the expected red test. On a resolved mitigation it's a regression.
 
 When a change genuinely adds no attack surface:
 
@@ -99,8 +130,9 @@ delta, declarations and per-threat state.
 1. **Delta or declaration.** If the change touches any path not in `ignore`, it must change the
    threat model semantically (threats, mitigations, assumptions or links; reformatting does not
    count) or include a valid declaration.
-2. **Valid models.** Every `.tc.json` must parse and validate: unique ids, links that resolve,
-   known statuses, waived threats carry a reason.
+2. **Valid models.** Every `.tc.json` passes the official Threat Composer JSON Schema, the
+   editor's own stricter rules, and the TDD rules (unique ids, links that resolve, one strategy
+   tag on resolved threats, reasons where required). See `tdd lint`.
 3. **Red policy** (`policy.red`), CI only:
    - `block-new` (default): threats added by the change must be green, and any failing linked check
      fails the build. Pre-existing unmitigated threats are reported, not blocking, so you can adopt
@@ -110,6 +142,42 @@ delta, declarations and per-threat state.
 CI reads policy from the **base** branch, so a PR cannot loosen its own gate. Check definitions
 come from the head so new checks can land with the code they test.
 
+## Schema validation and lint
+
+`tdd lint` checks every model against the official Threat Composer JSON Schema (vendored in
+`threat_tdd/schemas/`, Apache-2.0) and the editor's stricter load rules, then lints it:
+
+```console
+$ tdd lint
+threats/billing.tc.json: T-3 error TDD110: marked threatResolved without a risk strategy tag; ...
+threats/billing.tc.json: M-5 warning TDD120: not linked to any threat
+1 model(s): 1 error(s), 1 warning(s)
+```
+
+- `--schema-only` runs only the schema and editor-compatibility rules (`TC001` to `TC004`).
+- `--strict` makes warnings fail.
+- `--disable TDD130,TDD131` skips rules; `lint.disable` in the config does the same permanently.
+- `--rules` lists every rule.
+- `tdd validate` runs the error rules the gate, hooks and CI use.
+- `tdd schema` prints the schema's path, and `--export PATH` copies it (e.g. for editor validation).
+
+## Works with the Threat Composer editor
+
+`tdd` writes `.tc.json` files in exactly the form the Threat Composer editor in the
+[AWS Toolkit for VS Code](https://marketplace.visualstudio.com/items?itemName=AmazonWebServices.aws-toolkit-vscode)
+saves them. Opening a model there to read it doesn't dirty the file. Without this, the editor
+rewrites files on open: it reorders keys, re-sorts lists as you browse the Threats, Mitigations
+and Assumptions views, strips `<tags>` and escapes `&`.
+
+- `tdd fmt` rewrites models into that form, and `tdd fmt --check` only reports.
+- CI fails on unformatted models (`policy.format`: `block`, `warn` or `off`).
+- When the agent edits a model, the plugin reformats it right away. If the agent wrote text
+  Threat Composer would strip or escape, the plugin asks it to rephrase instead.
+- The CLI refuses `<`, `>` and `&` in threat and mitigation text, and check names longer than 24
+  characters (tags are capped at 30).
+- Canonical files have no trailing newline. If an editor or a pre-commit end-of-file fixer adds
+  one, `tdd fmt --check` fails. Exclude `*.tc.json` from it (this repo's `.editorconfig` shows how).
+
 ## Configuration: `.tdd/config.json`
 
 ```json
@@ -118,7 +186,8 @@ come from the head so new checks can land with the code they test.
   "models": ["threats/**/*.tc.json"],
   "ignore": ["**/*.md", "docs/**", "LICENSE*", ".gitignore"],
   "declaration": { "min_length": 30 },
-  "policy": { "red": "block-new", "config_from_base": true },
+  "policy": { "red": "block-new", "config_from_base": true, "format": "block", "status_sync": "block" },
+  "lint": { "disable": [] },
   "hooks": { "commit_msg": "warn", "pre_push": "block", "claude_stop": "block" },
   "checks": {
     "invoice-scope": { "run": "pytest -q tests/test_invoices.py::test_cross_tenant_denied", "timeout": 300 }
@@ -133,14 +202,21 @@ Composer UI. Mitigations never contain commands.
 
 ```
 tdd init [--hooks] [--shared-hooks]      set up config and a starter model
-tdd status [--run-checks] [--json]       red / unverified / green / waived per threat
+tdd status [--run-checks] [--json]       state per threat, strategy, mitigation progress
+tdd sync [--dry-run] [--no-checks]       run checks; move statuses along with the work
+tdd lint [PATHS] [--schema-only] [--strict] [--disable CODES] [--rules]
+tdd schema [--print | --export PATH]     the vendored official Threat Composer schema
+tdd strategy --threat T-n <mitigate|accept|transfer|avoid> ["reason"]
+tdd dismiss --threat T-n "reason"        not applicable (Not Useful)
+tdd progress --mitigation M-n <identified|in-progress|resolved|will-not-action> ["reason"]
 tdd gate [--staged | --head REF] [--base REF]
 tdd delta                                semantic model diff vs the base branch
-tdd check [NAMES] [--threat T-n] [--all]
+tdd check [NAMES] [--threat T-n] [--all] [--resolve]
 tdd ci --base origin/main [--no-checks]  the full CI gate
 tdd declare "<reason>"
-tdd add-threat | add-mitigation | link | waive | add-check
+tdd add-threat [--strategy S] | add-mitigation | link | waive | add-check
 tdd validate [PATHS]
+tdd fmt [PATHS] [--check]                write models exactly as the Threat Composer editor does
 tdd hooks install|uninstall [--shared]
 ```
 
@@ -148,7 +224,9 @@ tdd hooks install|uninstall [--shared]
 
 `threats/tdd.tc.json` models threats to this tool (PR-body injection into CI, policy weakening,
 boilerplate declarations, commands smuggled through model files, hooks executing repo code,
-skipped local hooks, an agent gaming the Stop hook). Each mitigation links to a unit test, and
+skipped local hooks, an agent gaming the Stop hook, the editor silently rewriting a model, a
+mitigation status that misstates what is implemented, a threat resolved without a recorded risk
+strategy, a model the editor refuses to open). Each mitigation links to a unit test, and
 `.github/workflows/ci.yml` runs the action against this repository.
 
 See [docs/design.md](docs/design.md) for the design decisions behind v0.

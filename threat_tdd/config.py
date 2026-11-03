@@ -32,6 +32,14 @@ DEFAULTS: Dict[str, Any] = {
         "red": "block-new",
         # When true, CI reads policy from the base branch so a PR cannot weaken its own gate.
         "config_from_base": True,
+        # block | warn | off: models must be in the exact form the Threat Composer editor
+        # writes, so opening them in the VS Code extension doesn't rewrite them.
+        "format": "block",
+        # block | warn | off: statuses must track progress. A mitigation is resolved
+        # exactly when its checks pass, and a threat is resolved once it is green or
+        # handled under an explicit risk strategy tag. `tdd sync` makes the flips, in
+        # the same change as the work.
+        "status_sync": "block",
     },
     "hooks": {
         "commit_msg": "warn",  # off | warn | block
@@ -40,6 +48,8 @@ DEFAULTS: Dict[str, Any] = {
     },
     # name -> {"run": "<shell command>", "timeout": seconds, "description": "..."}
     "checks": {},
+    # Lint rule codes to skip (see `tdd lint --rules`), e.g. ["TDD130", "TDD131"].
+    "lint": {"disable": []},
 }
 
 
@@ -85,6 +95,16 @@ class Config:
     def hook_mode(self, name: str) -> str:
         mode = str(self.data["hooks"].get(name, "warn")).lower()
         return mode if mode in ("off", "warn", "block") else "warn"
+
+    @property
+    def format_policy(self) -> str:
+        mode = str(self.data["policy"].get("format", "block")).lower()
+        return mode if mode in ("block", "warn", "off") else "block"
+
+    @property
+    def status_sync_policy(self) -> str:
+        mode = str(self.data["policy"].get("status_sync", "block")).lower()
+        return mode if mode in ("block", "warn", "off") else "block"
 
     @property
     def red_policy(self) -> str:

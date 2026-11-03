@@ -27,6 +27,30 @@ treats as code.
   mirrors TDD (you can't merge a red test) without making adoption impossible on a repo with an
   existing backlog of unmitigated threats.
 
+## Statuses track progress; strategy tags record the decision
+
+Threat Composer's status fields carry progress, and TDD gives each status one meaning:
+- **Mitigations:** `mitigationInProgress` means its check exists and fails. `mitigationResolved`
+  means the checks pass. `mitigationResolvedWillNotAction` needs a reason.
+- **Threats:** `threatResolved` means green or handled under exactly one risk strategy tag
+  (`risk:mitigate`, `risk:accept`, `risk:transfer`, `risk:avoid`). Accept, transfer and avoid
+  need a written reason. This mirrors Threat Composer's own definition of Resolved ("all agreed
+  risk response actions (mitigation, transfer, avoidance, risk acceptance) have been completed").
+- **Not Useful** means not applicable, also with a reason. v0's `tdd waive` used it for accepted
+  risk, which contradicted that definition. `waive` now records `risk:accept`.
+
+Tags are used for the strategy because they show and edit in the Threat Composer UI and survive
+its strict schema. A `custom:` metadata key would also survive, but it's less visible.
+
+`tdd sync` updates statuses from the check results, and the change lands in the same commit as
+the code. CI (`policy.status_sync`, default `block`) fails when a status lags behind the checks
+or claims more than they prove. In-progress is informational and never fails CI.
+
+The status also sharpens red and green. A failing check on a planned mitigation is expected (it is
+the test written before the code) and doesn't override another verified mitigation. A failing
+check on a resolved mitigation is a regression and always turns the threat red. The flip is
+enforced per pull request, since hooks never run checks.
+
 ## Declarations
 
 Three forms (file, commit trailer, PR body) because teams differ: files give an audit trail that
@@ -62,6 +86,53 @@ faith. The reviewer still has to read it. The CI summary shows every declaration
 block and evaluates the whole branch against the merge base. Both can be bypassed with
 `--no-verify`, which is why CI exists. Known gap: `commit-msg` cannot see an `--amend`'s full
 change, only the newly staged part. Pre-push and CI cover it.
+
+## Official schema and lint
+
+The official `threat-composer-v1.schema.json` is vendored, and `jsonschema_lite.py` validates
+against it with the standard library. That validator covers every keyword the schema uses and
+raises on any it doesn't support, so a schema update can't be silently half-checked. A test
+compares the schema's property order, length limits and enums with `canonical.py`, so the two
+can't drift apart.
+
+The schema is a little stricter than the editor (it rejects `workspace` and `displayedStatement`,
+which the editor accepts and drops). It is also looser in places the editor enforces at load
+(exact 36-character link ids). Lint reports both, under `TC001` and `TC002`.
+
+## Matching the Threat Composer editor byte for byte
+
+Opening a model in the AWS Toolkit's Threat Composer editor could dirty it. The causes, all from
+reading the source (awslabs/threat-composer and aws/aws-toolkit-vscode):
+
+1. **Load pipeline.** `sanitize-html` with no allowed tags runs over every string, then strict zod
+   schemas rebuild every object in schema key order and drop `displayedStatement`. The export
+   rebuilds the top level in a fixed order, fills in missing sections, and drops `workspace` and
+   an empty `brainstorm`.
+2. **List views sort the shared state in place.** The Threats, Mitigations and Assumptions lists
+   start from the context's own array and call `.sort()` on it when no filter is active, so just
+   viewing a list reorders the data that gets saved. The threat list also calls `.reverse()` in
+   place when the sort is ascending.
+3. **Autosave.** Every second the webview compares `JSON.stringify(state, null, 2)` to the file
+   text. If they differ and the parsed JSON is not lodash-equal, the Toolkit replaces the whole
+   document. A manual save writes any byte difference.
+
+So a semantic change (sorted arrays, stripped tags, added sections) triggers a rewrite, and the
+rewrite also brings in key reordering, which is the noise people notice.
+
+`threat_tdd/canonical.py` reproduces steps 1 and 2 and the serializer, and every write goes
+through it. The deployed CDN bundle was checked against the repository source for schema key
+order and the in-place sorts. Limits of the port:
+
+- `sanitize-html` is reproduced for tags, standard entities and `&`/`<`/`>` escaping. Comments,
+  raw-text tags like `<script>`, quoted attributes and non-standard entities are reported as
+  "uncertain" and left alone, never guessed at.
+- It was validated by reading the source and against the example models in the Threat Composer
+  repository, not by running Threat Composer's JavaScript.
+- A list re-sorted to a non-default order (e.g. by priority) is a user action and will still
+  reorder the file.
+
+The statement text uses Threat Composer's own templates and article rules (the `indefinite`
+package), so a CLI-written threat doesn't change when someone opens it in the threat editor.
 
 ## Not in v0
 

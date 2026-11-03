@@ -1,15 +1,19 @@
 """Reading, validating and editing AWS Threat Composer ``.tc.json`` files.
 
-Only the parts of the format that TDD relies on are interpreted; every other
-field is preserved untouched when a file is rewritten.
+Files are always written in the exact form the Threat Composer editor writes
+(see ``canonical.py``), so opening a file written by ``tdd`` in the AWS Toolkit
+for VS Code does not dirty it.
 
 TDD conventions layered on top of Threat Composer:
   - A mitigation is linked to a threat with a normal ``mitigationLinks`` entry.
   - A mitigation is linked to a *check* with a tag ``check:<name>``, where
     ``<name>`` is a key in ``.tdd/config.json`` -> ``checks``. Tags are
     editable in the Threat Composer UI, so humans can maintain the link too.
-  - A threat is waived (accepted risk) by setting status
-    ``threatResolvedNotUseful`` and explaining why in its ``Comments`` metadata.
+  - A threat's risk handling strategy is an explicit tag: ``risk:mitigate``,
+    ``risk:accept``, ``risk:transfer`` or ``risk:avoid``. A threat is not resolved
+    without exactly one. Accept, transfer and avoid carry a ``Comments`` reason.
+  - ``threatResolvedNotUseful`` means "not applicable" (dismissed), with a reason.
+  - Statuses track progress; see ``status.py``.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from threat_tdd import globs, gitutil
+from threat_tdd import canonical, globs, gitutil
 
 CHECK_TAG_PREFIX = "check:"
 
@@ -31,10 +35,50 @@ MITIGATION_STATUSES = {
     "mitigationResolved",
     "mitigationResolvedWillNotAction",
 }
-WAIVED = "threatResolvedNotUseful"
+NOT_USEFUL = "threatResolvedNotUseful"
 WONT_DO = "mitigationResolvedWillNotAction"
+RISK_TAG_PREFIX = "risk:"
+STRATEGIES = ("mitigate", "accept", "transfer", "avoid")
+STRATEGY_NOTE = {"accept": "Risk accepted", "transfer": "Risk transferred", "avoid": "Risk avoided"}
+PROGRESS = {
+    "identified": "mitigationIdentified",
+    "in-progress": "mitigationInProgress",
+    "resolved": "mitigationResolved",
+    "will-not-action": "mitigationResolvedWillNotAction",
+}
 
-STRIDE = {"S", "T", "R", "I", "D", "E"}
+STRIDE = set(canonical.STRIDE)
+MAX_CHECK_NAME = canonical.TAG_MAX - len(CHECK_TAG_PREFIX)
+
+
+def clean_text(label: str, value: str, max_len: Optional[int] = None) -> str:
+    """Reject text Threat Composer would rewrite on load (tags stripped, &, <, > escaped)."""
+    value = value.strip()
+    try:
+        stored = canonical.sanitize_string(value)
+    except canonical.Uncertain:
+        stored = None
+    if stored != value:
+        hint = f" (Threat Composer would store {stored!r})" if stored is not None else ""
+        raise ValueError(
+            f"{label} contains '<', '>' or '&', which Threat Composer strips or escapes{hint}; "
+            "rephrase it, e.g. 'and' instead of '&', a word instead of '<placeholder>'"
+        )
+    if max_len is not None and canonical._u16len(value) > max_len:
+        raise ValueError(f"{label} is longer than Threat Composer's limit of {max_len} characters")
+    return value
+
+
+def check_tag(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise ValueError("check name must not be empty")
+    if len(name) > MAX_CHECK_NAME:
+        raise ValueError(
+            f"check name '{name}' is {len(name)} characters; Threat Composer tags are limited to "
+            f"{canonical.TAG_MAX}, so check names can be at most {MAX_CHECK_NAME}"
+        )
+    return CHECK_TAG_PREFIX + clean_text("check name", name)
 
 
 def empty_model(name: str = "", description: str = "") -> Dict[str, Any]:
@@ -59,28 +103,15 @@ def compose_statement(
     goals: Iterable[str] = (),
     assets: Iterable[str] = (),
 ) -> str:
-    """Threat Composer's threat grammar."""
-    source = source.strip()
-    article = "An" if source[:1].lower() in "aeiou" else "A"
-    parts = [f"{article} {source}"]
-    if prerequisites.strip():
-        parts.append(prerequisites.strip())
-    text = " ".join(parts) + f" can {action.strip()}"
-    if impact.strip():
-        text += f", which leads to {impact.strip()}"
-    goals = [g.strip() for g in goals if g.strip()]
-    assets = [a.strip() for a in assets if a.strip()]
-    if goals or assets:
-        text += ", resulting in reduced " + _join(goals or ["security"])
-        if assets:
-            text += " of " + _join(assets)
-    return text
-
-
-def _join(items: List[str]) -> str:
-    if len(items) <= 1:
-        return "".join(items)
-    return ", ".join(items[:-1]) + " and " + items[-1]
+    """The statement Threat Composer's editor renders from these fields."""
+    return canonical.render_statement({
+        "threatSource": source,
+        "prerequisites": prerequisites,
+        "threatAction": action,
+        "threatImpact": impact,
+        "impactedGoal": [g for g in goals if g],
+        "impactedAssets": [a for a in assets if a],
+    })
 
 
 def metadata_value(item: Dict[str, Any], key: str) -> Any:
@@ -123,6 +154,7 @@ def mitigation_label(mitigation: Dict[str, Any]) -> str:
 class Model:
     path: str
     data: Dict[str, Any]
+    text: Optional[str] = None  # file text as read, to detect non-canonical formatting
 
     @property
     def threats(self) -> List[Dict[str, Any]]:
@@ -176,46 +208,58 @@ class Model:
         comments: Optional[str] = None,
         tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
+        source = clean_text("threat source", source, canonical.FIELD_MAX)
+        prerequisites = clean_text("prerequisites", prerequisites, canonical.FIELD_MAX)
+        action = clean_text("threat action", action, canonical.FIELD_MAX)
+        impact = clean_text("threat impact", impact, canonical.FIELD_MAX)
+        goals = [clean_text("impacted goal", g, canonical.FIELD_MAX) for g in goals if g.strip()]
+        assets = [clean_text("impacted asset", a, canonical.FIELD_MAX) for a in assets if a.strip()]
+        tags = [clean_text("tag", t, canonical.TAG_MAX) for t in tags or [] if t.strip()]
         num = self._next_numeric("threats")
         threat: Dict[str, Any] = {
             "id": str(uuid.uuid4()),
             "numericId": num,
             "displayOrder": num,
-            "statement": compose_statement(source, prerequisites, action, impact, goals, assets),
+            "metadata": [],
+            "tags": tags,
             "threatSource": source,
             "prerequisites": prerequisites,
             "threatAction": action,
             "threatImpact": impact,
             "impactedGoal": goals,
             "impactedAssets": assets,
-            "metadata": [],
-            "tags": list(tags or []),
+            "statement": compose_statement(source, prerequisites, action, impact, goals, assets),
             "status": "threatIdentified",
         }
         if stride:
-            set_metadata(threat, "STRIDE", [s.upper() for s in stride])
+            bad = [x for x in stride if x.upper() not in STRIDE]
+            if bad:
+                raise ValueError(f"invalid STRIDE values {bad}; use letters from STRIDE")
+            set_metadata(threat, "STRIDE", [x.upper() for x in stride])
         if priority:
             set_metadata(threat, "Priority", priority.capitalize())
         if comments:
-            set_metadata(threat, "Comments", comments)
+            set_metadata(threat, "Comments", clean_text("comments", comments, canonical.FREE_TEXT_SMALL_MAX))
         self.data.setdefault("threats", []).append(threat)
         return threat
 
     def add_mitigation(
         self, content: str, checks: Optional[List[str]] = None, comments: Optional[str] = None
     ) -> Dict[str, Any]:
+        content = clean_text("mitigation content", content, canonical.FREE_TEXT_SMALL_MAX)
+        tags = [check_tag(c) for c in checks or []]
         num = self._next_numeric("mitigations")
         mitigation: Dict[str, Any] = {
             "id": str(uuid.uuid4()),
             "numericId": num,
             "displayOrder": num,
-            "content": content,
             "metadata": [],
-            "tags": [CHECK_TAG_PREFIX + c for c in checks or []],
+            "tags": tags,
+            "content": content,
             "status": "mitigationIdentified",
         }
         if comments:
-            set_metadata(mitigation, "Comments", comments)
+            set_metadata(mitigation, "Comments", clean_text("comments", comments, canonical.FREE_TEXT_SMALL_MAX))
         self.data.setdefault("mitigations", []).append(mitigation)
         return mitigation
 
@@ -229,23 +273,68 @@ class Model:
         return True
 
     def add_check_tag(self, mitigation: Dict[str, Any], check: str) -> None:
-        tag = CHECK_TAG_PREFIX + check
+        tag = check_tag(check)
         tags = mitigation.setdefault("tags", [])
         if tag not in tags:
             tags.append(tag)
 
+    @staticmethod
+    def _append_comment(item: Dict[str, Any], note: str) -> None:
+        existing = metadata_value(item, "Comments")
+        text = f"{existing}\n\n{note}".strip() if existing else note
+        if canonical._u16len(text) > canonical.FREE_TEXT_SMALL_MAX:
+            raise ValueError(f"Comments would exceed Threat Composer's {canonical.FREE_TEXT_SMALL_MAX} character limit")
+        set_metadata(item, "Comments", text)
+
+    def set_strategy(self, threat: Dict[str, Any], strategy: str, reason: Optional[str] = None) -> None:
+        """Record the risk handling strategy as the threat's single risk:<strategy> tag.
+
+        accept / transfer / avoid need a reason, recorded in Comments, and resolve the
+        threat. mitigate leaves the status for `tdd sync` to set once the checks pass.
+        """
+        strategy = strategy.lower()
+        if strategy not in STRATEGIES:
+            raise ValueError(f"strategy must be one of {', '.join(STRATEGIES)}")
+        if strategy != "mitigate":
+            if not reason or not reason.strip():
+                raise ValueError(f"risk:{strategy} needs a reason")
+            self._append_comment(threat, f"{STRATEGY_NOTE[strategy]}: {clean_text('reason', reason)}")
+            threat["status"] = "threatResolved"
+        tags = [t for t in threat.get("tags") or [] if not str(t).lower().startswith(RISK_TAG_PREFIX)]
+        threat["tags"] = tags + [RISK_TAG_PREFIX + strategy]
+
     def waive(self, threat: Dict[str, Any], reason: str) -> None:
-        threat["status"] = WAIVED
-        existing = metadata_value(threat, "Comments")
-        note = f"Accepted risk: {reason.strip()}"
-        set_metadata(threat, "Comments", f"{existing}\n\n{note}".strip() if existing else note)
+        """Accept the risk (kept for compatibility; same as set_strategy(accept))."""
+        self.set_strategy(threat, "accept", reason)
+
+    def dismiss(self, threat: Dict[str, Any], reason: str) -> None:
+        """Not applicable to this system: Threat Composer's 'Not Useful' status."""
+        self._append_comment(threat, f"Not applicable: {clean_text('reason', reason)}")
+        threat["status"] = NOT_USEFUL
+
+    def set_progress(self, mitigation: Dict[str, Any], progress: str, reason: Optional[str] = None) -> None:
+        if progress not in PROGRESS:
+            raise ValueError(f"progress must be one of {', '.join(PROGRESS)}")
+        if progress == "will-not-action":
+            if not reason or not reason.strip():
+                raise ValueError("will-not-action needs a reason")
+            self._append_comment(mitigation, f"Will not action: {clean_text('reason', reason)}")
+        mitigation["status"] = PROGRESS[progress]
+
+    def canonical_text(self) -> str:
+        """The file text Threat Composer would write for this model."""
+        canon, report = canonical.canonicalize(self.data)
+        if canon is None:
+            raise ValueError("Threat Composer would reject this model:\n  " + "\n  ".join(report.errors))
+        return canonical.dumps(canon)
 
     def save(self, root: str) -> None:
+        text = self.canonical_text()
         full = os.path.join(root, self.path)
         os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
-        with open(full, "w", encoding="utf-8") as fh:
-            json.dump(self.data, fh, indent=2, ensure_ascii=False)
-            fh.write("\n")
+        with open(full, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)  # no trailing newline: JSON.stringify doesn't add one
+        self.text = text
 
 
 def _find(items: List[Dict[str, Any]], ref: str, prefix: str, kind: str) -> Dict[str, Any]:
@@ -282,7 +371,7 @@ def parse(path: str, text: str) -> Model:
     data = json.loads(text)
     if not isinstance(data, dict):
         raise ValueError("top level must be a JSON object")
-    return Model(path, data)
+    return Model(path, data, text)
 
 
 def load_all(root: str, source: str, patterns: List[str]) -> LoadResult:
@@ -314,84 +403,20 @@ class Issue:
     path: str
     level: str  # "error" | "warning"
     message: str
+    code: str = ""
 
     def __str__(self) -> str:
         return f"{self.path}: {self.level}: {self.message}"
 
 
 def validate(model: Model, known_checks: Optional[Iterable[str]] = None) -> List[Issue]:
-    issues: List[Issue] = []
+    """The core lint rules: Threat Composer compatibility, references and strategy rules.
 
-    def err(msg: str) -> None:
-        issues.append(Issue(model.path, "error", msg))
+    Used by the gate, the hooks and CI. ``tdd lint`` runs the full rule set.
+    """
+    from threat_tdd import lint  # lint imports this module
 
-    def warn(msg: str) -> None:
-        issues.append(Issue(model.path, "warning", msg))
-
-    data = model.data
-    for key in ("threats", "mitigations", "assumptions", "mitigationLinks", "assumptionLinks"):
-        if key in data and not isinstance(data[key], list):
-            err(f"'{key}' must be an array")
-    if issues:
-        return issues
-
-    def unique(items: List[Dict[str, Any]], kind: str) -> set:
-        ids, nums = set(), set()
-        for item in items:
-            iid = item.get("id")
-            if not isinstance(iid, str) or not iid:
-                err(f"{kind} without an id: {json.dumps(item)[:80]}")
-                continue
-            if iid in ids:
-                err(f"duplicate {kind} id {iid}")
-            ids.add(iid)
-            num = item.get("numericId")
-            if num is not None:
-                if num in nums:
-                    err(f"duplicate {kind} numericId {num}")
-                nums.add(num)
-        return ids
-
-    threat_ids = unique(model.threats, "threat")
-    mitigation_ids = unique(model.mitigations, "mitigation")
-    assumption_ids = unique(model.assumptions, "assumption")
-
-    for t in model.threats:
-        label = threat_label(t)
-        if not str(t.get("statement") or "").strip() and not str(t.get("threatAction") or "").strip():
-            err(f"{label} has no statement")
-        status = t.get("status")
-        if status is not None and status not in THREAT_STATUSES:
-            err(f"{label} has unknown status '{status}'")
-        if status == WAIVED and not str(metadata_value(t, "Comments") or "").strip():
-            err(f"{label} is marked not-useful (waived) but has no Comments explaining why")
-        stride = metadata_value(t, "STRIDE")
-        if stride is not None:
-            bad = [s for s in (stride if isinstance(stride, list) else [stride]) if s not in STRIDE]
-            if bad:
-                err(f"{label} has invalid STRIDE values {bad}")
-
-    known = set(known_checks) if known_checks is not None else None
-    for m in model.mitigations:
-        label = mitigation_label(m)
-        if not str(m.get("content") or "").strip():
-            err(f"{label} has no content")
-        status = m.get("status")
-        if status is not None and status not in MITIGATION_STATUSES:
-            err(f"{label} has unknown status '{status}'")
-        if known is not None:
-            for name in check_names(m):
-                if name not in known:
-                    warn(f"{label} references check '{name}' which is not defined in .tdd/config.json")
-
-    for l in model.mitigation_links:
-        if l.get("mitigationId") not in mitigation_ids:
-            err(f"mitigationLink references unknown mitigation {l.get('mitigationId')}")
-        if l.get("linkedId") not in threat_ids:
-            err(f"mitigationLink references unknown threat {l.get('linkedId')}")
-    for l in model.assumption_links:
-        if l.get("assumptionId") not in assumption_ids:
-            err(f"assumptionLink references unknown assumption {l.get('assumptionId')}")
-        if l.get("linkedId") not in threat_ids | mitigation_ids:
-            err(f"assumptionLink references unknown item {l.get('linkedId')}")
-    return issues
+    return [
+        Issue(i.path, i.level, (f"{i.where}: " if i.where else "") + i.message, i.code)
+        for i in lint.lint_model(model, known_checks, rules=lint.CORE)
+    ]

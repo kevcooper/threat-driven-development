@@ -1,0 +1,7 @@
+# Threat Composer writes .tc.json with JSON.stringify(data, null, 2): two-space
+# indent and no final newline. Match it so opening a model in the VS Code
+# extension doesn't rewrite it (see `tdd fmt`).
+[*.tc.json]
+indent_style = space
+indent_size = 2
+insert_final_newline = false
