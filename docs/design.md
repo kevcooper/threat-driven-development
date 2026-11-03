@@ -87,6 +87,18 @@ block and evaluates the whole branch against the merge base. Both can be bypasse
 `--no-verify`, which is why CI exists. Known gap: `commit-msg` cannot see an `--amend`'s full
 change, only the newly staged part. Pre-push and CI cover it.
 
+## Mitigation priority is derived, not entered
+
+A mitigation's priority is the highest `Priority` among the threats it is linked to.
+Not-applicable threats are excluded, and a mitigation with no prioritized threat gets no tag.
+It's stored as a `priority:<level>` tag, because Threat Composer's schema allows `Priority`
+metadata only on threats. Tags are also visible and filterable in the editor.
+
+Because it's derived, nobody edits it: every `tdd` save recomputes it, the PostToolUse hook does
+the same after agent edits, and `tdd sync --no-checks` catches up after someone changes a threat's
+Priority in the editor. Lint rule TDD150 is an error, so a stale tag fails the gate and CI rather
+than silently misordering work.
+
 ## Official schema and lint
 
 The official `threat-composer-v1.schema.json` is vendored, and `jsonschema_lite.py` validates

@@ -15,7 +15,7 @@ from threat_tdd import canonical, claude_hooks, declare, git_hooks, gitutil, sta
 from threat_tdd import config as config_mod
 from threat_tdd import delta as delta_mod
 from threat_tdd import gate as gate_mod
-from threat_tdd.model import empty_model, load_all, load_file, model_paths, validate, Model
+from threat_tdd.model import empty_model, load_all, load_file, mitigation_label, model_paths, validate, Model
 
 
 def _root() -> str:
@@ -288,7 +288,7 @@ def cmd_check(args) -> int:
         return 0
     res = checks_mod.run_many(cfg, names, echo=None if args.json else print)
     outcomes = {k: v.outcome for k, v in res.items()}
-    applied, remaining = _sync(root, cfg, loaded.models, outcomes, write=args.resolve)
+    applied, remaining, _ = _sync(root, cfg, loaded.models, outcomes, write=args.resolve)
     if args.json:
         _print_json({"checks": [r.as_dict() for r in res.values()],
                      "status_changes": [f"{i.label}: {i.current} -> {i.expected}" for i in applied],
@@ -302,14 +302,27 @@ def cmd_check(args) -> int:
 
 
 def _sync(root, cfg, models, outcomes, write: bool):
-    """Compute status issues; when ``write``, apply lagging/progress fixes and save."""
+    """Compute status issues; when ``write``, apply lagging/progress fixes and derived
+    priority tags, and save."""
     issues = status.status_issues(models, outcomes, cfg.checks.keys())
+    tag_changes = 0
     if not write:
-        return [], issues
+        for m in models:
+            for mit, current, expected in m.priority_tag_drift():
+                tag_changes += 1
+                print(f"{m.path}: {mitigation_label(mit)} priority tag {', '.join(current) or '(none)'} "
+                      f"-> {expected or '(none)'}")
+        return [], issues, tag_changes
     applied = status.apply_status_fixes(models, issues)
-    for path in sorted({i.path for i in applied}):
+    touched = {i.path for i in applied}
+    for m in models:
+        for label, current, expected in m.sync_priority_tags():
+            print(f"{m.path}: {label} priority tag {', '.join(current) or '(none)'} -> {expected or '(none)'}")
+            touched.add(m.path)
+            tag_changes += 1
+    for path in sorted(touched):
         next(m for m in models if m.path == path).save(root)
-    return applied, [i for i in issues if i not in applied]
+    return applied, [i for i in issues if i not in applied], tag_changes
 
 
 def _print_sync(applied, remaining) -> None:
@@ -329,17 +342,22 @@ def cmd_sync(args) -> int:
     if not args.no_checks:
         res = checks_mod.run_many(cfg, status.linked_checks(loaded.models), echo=None if args.json else print)
         outcomes = {k: v.outcome for k, v in res.items()}
-    applied, remaining = _sync(root, cfg, loaded.models, outcomes, write=not args.dry_run)
+    applied, remaining, tag_changes = _sync(root, cfg, loaded.models, outcomes, write=not args.dry_run)
     if args.json:
         _print_json({"status_changes": [f"{i.label}: {i.current} -> {i.expected}" for i in applied],
                      "status_issues": [i.message for i in remaining]})
     else:
         if args.dry_run:
-            print("\n".join(f"{i.path}: {i.message}" for i in remaining) or "statuses are in sync")
+            for i in remaining:
+                print(f"{i.path}: {i.message}")
+            if not remaining and not tag_changes:
+                print("statuses and priority tags are in sync")
         else:
             _print_sync(applied, remaining)
-            if not applied and not remaining:
-                print("statuses are in sync")
+            if not applied and not remaining and not tag_changes:
+                print("statuses and priority tags are in sync")
+            elif tag_changes and not applied:
+                print("commit the model change together with the work it records")
     return 1 if any(i.kind == "overclaim" for i in remaining) else 0
 
 

@@ -80,6 +80,14 @@ Statuses record progress. `tdd sync` sets them from the checks, and CI fails whe
 A failing check on an in-progress mitigation is the expected red test. On a resolved mitigation
 it's a regression: the threat turns red and CI fails.
 
+## Mitigation priority
+
+Every mitigation carries one `priority:high`, `priority:medium` or `priority:low` tag: the
+highest `Priority` among the threats it's linked to. Not-applicable threats don't count, and a
+mitigation with no prioritized threat gets no tag. The tag is derived: `tdd` sets it on every save,
+and `tdd sync --no-checks` repairs it after hand edits. Don't set it yourself. Change the threat's
+Priority, then sync. A stale tag is lint error TDD150. Work on `priority:high` mitigations first.
+
 ## Schema and lint
 
 `tdd lint` validates every model against the official Threat Composer JSON Schema (vendored with
@@ -139,7 +147,7 @@ The format is summarized in [threat-composer-format.md](threat-composer-format.m
 
 ```
 tdd status [--run-checks]          state per threat, strategy, mitigation progress
-tdd sync [--dry-run]               run checks; update mitigation and threat statuses
+tdd sync [--dry-run] [--no-checks]  run checks; update statuses and mitigation priority tags
 tdd strategy --threat T-n <mitigate|accept|transfer|avoid> ["reason"]
 tdd dismiss --threat T-n "reason"  not applicable
 tdd progress --mitigation M-n <identified|in-progress|resolved|will-not-action> ["reason"]

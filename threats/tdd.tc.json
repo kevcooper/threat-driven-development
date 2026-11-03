@@ -27,7 +27,8 @@
       "displayOrder": 11,
       "metadata": [],
       "tags": [
-        "check:official-schema"
+        "check:official-schema",
+        "priority:medium"
       ],
       "content": "tdd lint and tdd validate check models against the vendored official Threat Composer JSON Schema and the editor's own stricter rules, in hooks and in CI.",
       "status": "mitigationResolved"
@@ -38,7 +39,8 @@
       "displayOrder": 10,
       "metadata": [],
       "tags": [
-        "check:risk-strategy-tags"
+        "check:risk-strategy-tags",
+        "priority:high"
       ],
       "content": "A threat is resolved only under exactly one risk strategy tag; accept, transfer and avoid require a written reason. Lint, status and CI treat anything else as red.",
       "status": "mitigationResolved"
@@ -49,7 +51,8 @@
       "displayOrder": 9,
       "metadata": [],
       "tags": [
-        "check:mitigation-status"
+        "check:mitigation-status",
+        "priority:medium"
       ],
       "content": "A mitigation is resolved exactly when its checks pass: tdd check --resolve flips it in the same change as the implementation, and CI fails on a lagging status or a resolved mitigation whose check fails.",
       "status": "mitigationResolved"
@@ -60,7 +63,8 @@
       "displayOrder": 8,
       "metadata": [],
       "tags": [
-        "check:tc-canonical-format"
+        "check:tc-canonical-format",
+        "priority:medium"
       ],
       "content": "tdd writes models in the exact form the Threat Composer editor saves, keeps angle-bracket tags as curly braces instead of letting the editor delete them, refuses text it would escape, reformats agent edits in the PostToolUse hook, and CI fails on unformatted models.",
       "status": "mitigationResolved"
@@ -71,7 +75,8 @@
       "displayOrder": 7,
       "metadata": [],
       "tags": [
-        "check:formatting-not-delta"
+        "check:formatting-not-delta",
+        "priority:medium"
       ],
       "content": "Only semantic changes (threats, mitigations, assumptions, links) count as a delta; formatting and renumbering do not.",
       "status": "mitigationResolved"
@@ -82,7 +87,8 @@
       "displayOrder": 6,
       "metadata": [],
       "tags": [
-        "check:ci-backstop"
+        "check:ci-backstop",
+        "priority:medium"
       ],
       "content": "The GitHub Action runs tdd ci on every pull request with full history, so skipping local hooks does not skip the gate.",
       "status": "mitigationResolved"
@@ -93,7 +99,8 @@
       "displayOrder": 5,
       "metadata": [],
       "tags": [
-        "check:hooks-do-not-run-checks"
+        "check:hooks-do-not-run-checks",
+        "priority:high"
       ],
       "content": "Claude Code hooks never execute checks; they read only cached results. Checks run only on explicit tdd check/status --run-checks/ci.",
       "status": "mitigationResolved"
@@ -104,7 +111,8 @@
       "displayOrder": 4,
       "metadata": [],
       "tags": [
-        "check:checks-by-name-only"
+        "check:checks-by-name-only",
+        "priority:high"
       ],
       "content": "Mitigations reference checks by name with a check: tag followed by the check name; commands live only in .tdd/config.json, which is itself gated.",
       "status": "mitigationResolved"
@@ -115,7 +123,8 @@
       "displayOrder": 3,
       "metadata": [],
       "tags": [
-        "check:declaration-quality"
+        "check:declaration-quality",
+        "priority:medium"
       ],
       "content": "Declarations must meet a minimum length and are rejected when they match a boilerplate list.",
       "status": "mitigationResolved"
@@ -126,7 +135,8 @@
       "displayOrder": 2,
       "metadata": [],
       "tags": [
-        "check:policy-from-base"
+        "check:policy-from-base",
+        "priority:high"
       ],
       "content": "tdd ci reads policy from the base branch; config changes take effect only after merge. Check definitions come from head.",
       "status": "mitigationResolved"
@@ -137,7 +147,8 @@
       "displayOrder": 1,
       "metadata": [],
       "tags": [
-        "check:action-no-interpolation"
+        "check:action-no-interpolation",
+        "priority:high"
       ],
       "content": "The action passes the PR body and refs to its script through env vars and never interpolates ${{ }} expressions inside run: blocks.",
       "status": "mitigationResolved"
