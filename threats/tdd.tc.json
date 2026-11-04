@@ -30,7 +30,7 @@
         "check:tag-safety",
         "priority:high"
       ],
-      "content": "Tags are named after the mitigation id, and only ids made of letters, digits, dot, underscore and dash that pass git check-ref-format become tags; others are skipped. Tag text goes to git on stdin. Only the push-to-main job has a write token, and the action tags only on push events.",
+      "content": "Tag names are the model file name, reduced to letters, digits, dot, underscore and dash, plus the integer M-number, checked with git check-ref-format; existing tags are never overwritten by another mitigation. Tag text goes to git on stdin. Only the push-to-main job has a write token, and the action tags only on push events.",
       "status": "mitigationResolved"
     },
     {
@@ -249,7 +249,7 @@
         "risk:mitigate"
       ],
       "threatSource": "contributor",
-      "prerequisites": "who controls a mitigation id or mitigation text",
+      "prerequisites": "who controls a model file name or mitigation text",
       "threatAction": "inject options, refs or shell syntax into the git commands tdd runs to tag mitigations, or obtain the write token that tagging needs from a pull request run",
       "threatImpact": "tampered repository history or arbitrary code execution in CI",
       "impactedGoal": [
@@ -259,7 +259,7 @@
         "repository",
         "CI runner"
       ],
-      "statement": "A contributor who controls a mitigation id or mitigation text can inject options, refs or shell syntax into the git commands tdd runs to tag mitigations, or obtain the write token that tagging needs from a pull request run, which leads to tampered repository history or arbitrary code execution in CI, resulting in reduced integrity of repository and CI runner",
+      "statement": "A contributor who controls a model file name or mitigation text can inject options, refs or shell syntax into the git commands tdd runs to tag mitigations, or obtain the write token that tagging needs from a pull request run, which leads to tampered repository history or arbitrary code execution in CI, resulting in reduced integrity of repository and CI runner",
       "status": "threatResolved"
     },
     {

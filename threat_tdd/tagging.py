@@ -2,29 +2,32 @@
 
 A mitigation is resolved in the same commit as the code that implements it
 (``tdd sync`` flips its status), so that commit is where the mitigation landed.
-``tdd`` marks it with an annotated tag named after the mitigation's id, the UUID
-Threat Composer assigns::
+``tdd`` marks it with an annotated tag named after the model and the mitigation's
+friendly id, the ``M-<n>`` label shown in Threat Composer, under a ``tdd/``
+namespace that keeps them apart from release tags::
 
-    3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
+    tdd/<model>/M-<n>    e.g. tdd/billing/M-3 for M-3 in threats/billing.tc.json
 
-The id is unique across models and survives renumbering and renamed files. An
-optional ``tags.prefix`` in ``.tdd/config.json`` puts tags under ``<prefix>/<id>``.
+The model name is the model's file name without ``.tc.json``, made safe for a git
+ref. The namespace is ``tags.prefix`` in ``.tdd/config.json`` (default ``tdd``; an
+empty prefix gives ``<model>/M-<n>``).
 
 The tag message records the mitigation, the threats it covers, its checks and its
-priority, so ``git show <id>`` answers "when and how was this
-mitigated?".
+priority, so ``git show tdd/billing/M-3`` answers "when and how was this mitigated?".
 
 - A post-commit hook tags new commits (``tdd hooks install``).
 - ``tdd tag`` tags any range, which is how CI tags ``main`` after squash merges.
 - An amended or rebased commit moves the tag to the new commit, since it's the
   same event, rewritten.
 - If a mitigation regresses and is resolved again later, the later commit gets
-  ``<id>-r2``, ``<id>-r3`` and so on.
+  ``tdd/<model>/M-<n>-r2``, ``-r3`` and so on.
+- A name already used by a different mitigation (two model files with the same
+  name in different folders) or by a tag tdd didn't create is left alone, and the
+  resolution is skipped with a warning.
 
-The id comes from model content, so only ids made of letters, digits, ``.``, ``_``
-and ``-`` (not starting with ``-`` or ``.``) become tags, and the name is also
-checked with ``git check-ref-format``. Anything else is skipped with a warning.
-Tag text goes to git on stdin, never on a command line.
+Tag names are built only from the slugged file name and the integer numericId, and
+are checked with ``git check-ref-format``. Tag text goes to git on stdin, never on a
+command line.
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from threat_tdd import gitutil
 from threat_tdd.config import Config
@@ -57,31 +60,41 @@ class Resolution:
     model_path: str
     mitigation_id: str
     label: str  # M-3
+    numeric_id: Any = None
     tag: str = ""
     action: str = ""  # created | moved | exists | would-create | would-move | skipped
+    reason: str = ""  # why it was skipped
 
     def as_dict(self) -> Dict[str, str]:
         return self.__dict__.copy()
 
 
 def tag_prefix(cfg: Config) -> str:
-    return str((cfg.data.get("tags") or {}).get("prefix", "")).strip().strip("/")
+    return str((cfg.data.get("tags") or {}).get("prefix", "tdd")).strip().strip("/")
 
 
 def tags_enabled(cfg: Config) -> bool:
     return bool((cfg.data.get("tags") or {}).get("mitigations", True))
 
 
-SAFE_ID = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]*$")
+def model_slug(path: str) -> str:
+    """The model's name for tags: its file name without .tc.json, safe for a git ref."""
+    name = os.path.basename(path)
+    name = name[: -len(".tc.json")] if name.endswith(".tc.json") else os.path.splitext(name)[0]
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", name)
+    name = re.sub(r"\.{2,}", ".", name).strip(".-")
+    if name.endswith(".lock"):
+        name = name[: -len(".lock")]
+    return name or "model"
 
 
-def base_tag(cfg: Config, mitigation_id: str) -> Optional[str]:
-    """The tag name for a mitigation: its id (optionally under a prefix), or None if unsafe."""
-    if not isinstance(mitigation_id, str) or not SAFE_ID.match(mitigation_id) or ".." in mitigation_id \
-            or mitigation_id.endswith((".", ".lock")):
+def base_tag(cfg: Config, model_path: str, numeric_id: Any) -> Optional[str]:
+    """tdd/<model>/M-<n> (or <prefix>/<model>/M-<n>), None when numericId isn't whole."""
+    if isinstance(numeric_id, bool) or not isinstance(numeric_id, (int, float)) or numeric_id != int(numeric_id):
         return None
+    name = f"{model_slug(model_path)}/M-{int(numeric_id)}"
     prefix = tag_prefix(cfg)
-    return f"{prefix}/{mitigation_id}" if prefix else mitigation_id
+    return f"{prefix}/{name}" if prefix else name
 
 
 def _valid_ref(root: str, tag: str) -> bool:
@@ -115,7 +128,7 @@ def resolved_in(root: str, cfg: Config, commit: str) -> List[Resolution]:
         old = {m.get("id"): m for m in (before[path].mitigations if path in before else [])}
         for m in model.mitigations:
             if m.get("status") == RESOLVED and old.get(m.get("id"), {}).get("status") != RESOLVED:
-                found.append(Resolution(commit, path, m["id"], mitigation_label(m)))
+                found.append(Resolution(commit, path, m["id"], mitigation_label(m), m.get("numericId")))
     return found
 
 
@@ -161,16 +174,16 @@ def plan(root: str, cfg: Config, r: Resolution) -> Resolution:
 
     - no tag yet                                   -> create
     - tag already on this commit                   -> exists
-    - tag for another mitigation (name collision)  -> try the next suffix
+    - tag for another mitigation, or not tdd's     -> skipped, with a reason
     - tag on an earlier mainline commit            -> resolved before, regressed,
                                                       resolved again: next suffix
     - tag on a commit merged in with this one      -> exists (the branch commit that
                                                       did the work keeps its tag)
     - tag on a commit not in this history          -> move (amend, rebase, squash)
     """
-    base = base_tag(cfg, r.mitigation_id)
+    base = base_tag(cfg, r.model_path, r.numeric_id)
     if base is None:
-        r.action = "skipped"
+        r.action, r.reason = "skipped", f"numericId {r.numeric_id!r} isn't a whole number"
         return r
     parent = _first_parent(root, r.commit)
     n = 1
@@ -181,9 +194,11 @@ def plan(root: str, cfg: Config, r: Resolution) -> Resolution:
             r.tag, r.action = tag, "create"
             return r
         recorded = _tag_mitigation_id(root, tag)
-        if recorded is not None and recorded != r.mitigation_id:
-            n += 1
-            continue
+        if recorded != r.mitigation_id:
+            r.tag, r.action = tag, "skipped"
+            r.reason = (f"tag {tag} already marks a different mitigation ({recorded})" if recorded
+                        else f"tag {tag} already exists and wasn't created by tdd")
+            return r
         if target == r.commit:
             r.tag, r.action = tag, "exists"
             return r
@@ -198,8 +213,10 @@ def plan(root: str, cfg: Config, r: Resolution) -> Resolution:
 
 
 def apply(root: str, cfg: Config, r: Resolution, dry_run: bool = False) -> Resolution:
-    if r.action == "skipped" or not _valid_ref(root, r.tag):
-        r.action = "skipped"
+    if r.action == "skipped":
+        return r
+    if not _valid_ref(root, r.tag):
+        r.action, r.reason = "skipped", f"{r.tag!r} isn't a valid git tag name"
         return r
     if r.action == "exists":
         return r

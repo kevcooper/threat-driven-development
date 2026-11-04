@@ -197,7 +197,7 @@ def post_commit(root: str, args: List[str]) -> int:
         if r.action in ("created", "moved"):
             sys.stderr.write(f"tdd: {r.action} tag {r.tag} ({r.label} resolved in this commit)\n")
         elif r.action == "skipped":
-            sys.stderr.write(f"tdd: not tagging {r.label}: its id {r.mitigation_id!r} isn't safe as a tag name\n")
+            sys.stderr.write(f"tdd: not tagging {r.label}: {r.reason}\n")
     return 0
 
 
