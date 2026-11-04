@@ -28,6 +28,7 @@
       "metadata": [],
       "tags": [
         "check:tag-safety",
+        "CWE-88",
         "priority:high"
       ],
       "content": "Tag names are the model file name, reduced to letters, digits, dot, underscore and dash, plus the integer M-number, checked with git check-ref-format; existing tags are never overwritten by another mitigation. Tag text goes to git on stdin. Only the push-to-main job has a write token, and the action tags only on push events.",
@@ -100,6 +101,7 @@
       "metadata": [],
       "tags": [
         "check:ci-backstop",
+        "CWE-602",
         "priority:medium"
       ],
       "content": "The GitHub Action runs tdd ci on every pull request with full history, so skipping local hooks does not skip the gate.",
@@ -112,6 +114,7 @@
       "metadata": [],
       "tags": [
         "check:hooks-do-not-run-checks",
+        "CWE-829",
         "priority:high"
       ],
       "content": "Claude Code hooks never execute checks; they read only cached results. Checks run only on explicit tdd check/status --run-checks/ci.",
@@ -124,6 +127,7 @@
       "metadata": [],
       "tags": [
         "check:checks-by-name-only",
+        "CWE-78",
         "priority:high"
       ],
       "content": "Mitigations reference checks by name with a check: tag followed by the check name; commands live only in .tdd/config.json, which is itself gated.",
@@ -148,6 +152,7 @@
       "metadata": [],
       "tags": [
         "check:policy-from-base",
+        "CWE-807",
         "priority:high"
       ],
       "content": "tdd ci reads policy from the base branch; config changes take effect only after merge. Check definitions come from head.",
@@ -160,6 +165,7 @@
       "metadata": [],
       "tags": [
         "check:action-no-interpolation",
+        "CWE-78",
         "priority:high"
       ],
       "content": "The action passes the PR body and refs to its script through env vars and never interpolates ${{ }} expressions inside run: blocks.",
@@ -246,7 +252,8 @@
         }
       ],
       "tags": [
-        "risk:mitigate"
+        "risk:mitigate",
+        "CWE-88"
       ],
       "threatSource": "contributor",
       "prerequisites": "who controls a model file name or mitigation text",
@@ -441,7 +448,8 @@
         }
       ],
       "tags": [
-        "risk:mitigate"
+        "risk:mitigate",
+        "CWE-602"
       ],
       "threatSource": "developer",
       "prerequisites": "who pushes with --no-verify or without the hooks installed",
@@ -473,7 +481,8 @@
         }
       ],
       "tags": [
-        "risk:mitigate"
+        "risk:mitigate",
+        "CWE-829"
       ],
       "threatSource": "malicious repository",
       "prerequisites": "that a developer opens with the plugin installed",
@@ -506,7 +515,8 @@
         }
       ],
       "tags": [
-        "risk:mitigate"
+        "risk:mitigate",
+        "CWE-78"
       ],
       "threatSource": "threat model author",
       "prerequisites": "who can edit a .tc.json file",
@@ -572,7 +582,8 @@
         }
       ],
       "tags": [
-        "risk:mitigate"
+        "risk:mitigate",
+        "CWE-807"
       ],
       "threatSource": "contributor",
       "prerequisites": "who can open a pull request",
@@ -605,7 +616,8 @@
         }
       ],
       "tags": [
-        "risk:mitigate"
+        "risk:mitigate",
+        "CWE-78"
       ],
       "threatSource": "pull request author",
       "prerequisites": "who can edit the PR title or description",

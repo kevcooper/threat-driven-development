@@ -21,6 +21,11 @@ Rule codes are stable so they can be disabled in ``.tdd/config.json`` (``lint.di
   TDD121 will-not-action mitigation without a Comments reason          error
   TDD122 resolved mitigation with no check to prove it                 warning
   TDD150 mitigation's priority:<level> tag missing or stale            error
+  TDD151 mitigation's CWE tags don't match its linked threats         error
+  TDD160 CWE tag that isn't in the bundled CWE dictionary              error
+  TDD161 deprecated CWE                                                warning
+  TDD162 CWE that MITRE marks Discouraged or Prohibited for mapping   warning
+  TDD163 threat without a CWE tag                                      warning
   TDD130 threat without STRIDE metadata                                warning
   TDD131 threat without Priority metadata                              warning
   TDD132 threat without impacted goal or impacted assets              warning
@@ -35,7 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
-from threat_tdd import canonical, jsonschema_lite
+from threat_tdd import canonical, cwe, jsonschema_lite
 from threat_tdd import status as st
 from threat_tdd.model import Model, check_names, metadata_value, mitigation_label, threat_label
 
@@ -58,6 +63,11 @@ RULES: Dict[str, tuple] = {
     "TDD121": ("error", "will-not-action without reason"),
     "TDD122": ("warning", "resolved mitigation unproven"),
     "TDD150": ("error", "mitigation priority tag"),
+    "TDD151": ("error", "mitigation CWE tags"),
+    "TDD160": ("error", "unknown CWE"),
+    "TDD161": ("warning", "deprecated CWE"),
+    "TDD162": ("warning", "CWE too broad for mapping"),
+    "TDD163": ("warning", "threat without CWE"),
     "TDD130": ("warning", "missing STRIDE"),
     "TDD131": ("warning", "missing priority"),
     "TDD132": ("warning", "missing impact"),
@@ -168,6 +178,14 @@ def lint_model(
             mits = [m for m in model.mitigations_for(t.get("id")) if m.get("status") != st.WONT_DO]
             if not any(check_names(m) for m in mits):
                 add("TDD114", label, "risk:mitigate but no linked mitigation has a check:<name> tag yet")
+        for cid in cwe.tag_ids(t):
+            found = cwe.problem(cid)
+            if found:
+                kind, msg = found
+                add({"unknown": "TDD160", "deprecated": "TDD161", "mapping": "TDD162"}[kind], label, msg)
+        if status != st.NOT_USEFUL and not cwe.tag_ids(t):
+            add("TDD163", label, "no CWE tag for the weakness behind this threat; find one with "
+                                 "`tdd cwe search <words>` and add it with `tdd cwe add`")
         if status != st.NOT_USEFUL:
             if metadata_value(t, "STRIDE") in (None, []):
                 add("TDD130", label, "no STRIDE category")
@@ -198,6 +216,11 @@ def lint_model(
         want = expected or "no priority tag (no linked threat has a Priority)"
         add("TDD150", label, f"has {have}, should have {want}: the highest Priority of its linked "
                              "threats; run `tdd sync --no-checks`")
+
+    for m, current, expected in model.cwe_tag_drift():
+        add("TDD151", mitigation_label(m), f"has {', '.join(current) or 'no CWE tags'}, should have "
+                                           f"{', '.join(expected) or 'none'}: the CWE tags of its linked threats; "
+                                           "run `tdd sync --no-checks`")
 
     # -- assumptions ----------------------------------------------------------------------
     linked_assumptions = {l.get("assumptionId") for l in model.assumption_links}

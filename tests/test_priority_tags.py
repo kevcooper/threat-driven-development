@@ -84,5 +84,5 @@ class PriorityTagTests(RepoTestCase):
         with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))), mock.patch("sys.stdout", out):
             claude_hooks.main("post-tool-use")
         context = json.loads(out.getvalue())["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("M-1 -> priority:high", context)
+        self.assertIn("M-1 priority tag priority:low -> priority:high", context)
         self.assertEqual(self.mit()["tags"], ["priority:high"])

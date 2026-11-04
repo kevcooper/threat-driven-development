@@ -18,6 +18,9 @@ TDD conventions layered on top of Threat Composer:
     ``Priority`` among the threats it is linked to (not-applicable threats don't
     count). It is derived, so ``tdd`` keeps it up to date on every save. Threat
     Composer's schema doesn't allow Priority metadata on mitigations, hence a tag.
+  - A threat is tagged with the weakness behind it, e.g. ``CWE-639``, from the
+    bundled CWE dictionary (``cwe.py``). Mitigations get the CWE tags of their
+    linked, applicable threats, derived the same way as priority.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from threat_tdd import canonical, globs, gitutil
+from threat_tdd import canonical, cwe, globs, gitutil
 
 CHECK_TAG_PREFIX = "check:"
 PRIORITY_TAG_PREFIX = "priority:"
@@ -361,6 +364,38 @@ class Model:
                 out.append((m, current, expected))
         return out
 
+    def expected_cwe_tags(self, mitigation: Dict[str, Any]) -> List[str]:
+        """CWE tags of the linked, applicable threats, sorted."""
+        return cwe.derived_tags(t for t in self.linked_threats(mitigation.get("id")) if t.get("status") != NOT_USEFUL)
+
+    def cwe_tag_drift(self) -> List[Tuple[Dict[str, Any], List[str], List[str]]]:
+        """(mitigation, current CWE tags, expected CWE tags) for each mitigation that is off."""
+        out = []
+        for m in self.mitigations:
+            current = [t for t in m.get("tags") or [] if cwe.is_cwe_tag(t)]
+            expected = self.expected_cwe_tags(m)
+            if current != expected:
+                out.append((m, current, expected))
+        return out
+
+    def sync_cwe_tags(self) -> List[Tuple[str, List[str], List[str]]]:
+        """Set every mitigation's CWE tags (placed before its priority tag)."""
+        changes = []
+        for m, current, expected in self.cwe_tag_drift():
+            tags = [t for t in m.get("tags") or [] if not cwe.is_cwe_tag(t)]
+            at = next((i for i, t in enumerate(tags) if t in priority_tags(m)), len(tags))
+            m["tags"] = tags[:at] + expected + tags[at:]
+            changes.append((mitigation_label(m), current, expected))
+        return changes
+
+    def sync_derived_tags(self) -> List[str]:
+        """Sync CWE and priority tags; human-readable change lines."""
+        lines = [f"{l} CWE tags {', '.join(o) or '(none)'} -> {', '.join(n) or '(none)'}"
+                 for l, o, n in self.sync_cwe_tags()]
+        lines += [f"{l} priority tag {', '.join(o) or '(none)'} -> {n or '(none)'}"
+                  for l, o, n in self.sync_priority_tags()]
+        return lines
+
     def sync_priority_tags(self) -> List[Tuple[str, List[str], Optional[str]]]:
         """Set every mitigation's priority tag. Returns (label, old tags, new tag) per change."""
         changes = []
@@ -378,7 +413,7 @@ class Model:
         return canonical.dumps(canon)
 
     def save(self, root: str) -> None:
-        self.sync_priority_tags()  # derived; always current in files tdd writes
+        self.sync_derived_tags()  # derived; always current in files tdd writes
         text = self.canonical_text()
         full = os.path.join(root, self.path)
         os.makedirs(os.path.dirname(full) or ".", exist_ok=True)

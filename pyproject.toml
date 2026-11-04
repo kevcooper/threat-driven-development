@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "threat-tdd"
-version = "0.2.4"
+version = "0.3.0"
 description = "Threat Driven Development: threat model deltas as the security equivalent of failing tests"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -20,4 +20,4 @@ Repository = "https://github.com/kevcooper/threat-driven-development"
 packages = ["threat_tdd"]
 
 [tool.setuptools.package-data]
-threat_tdd = ["schemas/*.json", "schemas/*.md", "schemas/LICENSE-*"]
+threat_tdd = ["schemas/*.json", "schemas/*.md", "schemas/LICENSE-*", "data/*.json", "data/*.md"]
