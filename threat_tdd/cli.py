@@ -144,7 +144,7 @@ def cmd_status(args) -> int:
         if s.path != current:
             current = s.path
             print(f"\n{s.path}")
-        strategy = f" [risk:{s.strategy}]" if s.strategy else ""
+        strategy = (f" [risk:{s.strategy}]" if s.strategy else "") + (f" [{', '.join(s.cwes)}]" if s.cwes else "")
         print(f"  {sym[s.state]} {s.label:6} {s.statement[:100]}")
         print(f"         {s.reason}{strategy}" + (f"  [mitigations: {', '.join(s.mitigations)}]" if s.mitigations else ""))
     print("\n" + status.summary(states))
@@ -308,6 +308,10 @@ def _sync(root, cfg, models, outcomes, write: bool):
     tag_changes = 0
     if not write:
         for m in models:
+            for mit, current, expected in m.cwe_tag_drift():
+                tag_changes += 1
+                print(f"{m.path}: {mitigation_label(mit)} CWE tags {', '.join(current) or '(none)'} "
+                      f"-> {', '.join(expected) or '(none)'}")
             for mit, current, expected in m.priority_tag_drift():
                 tag_changes += 1
                 print(f"{m.path}: {mitigation_label(mit)} priority tag {', '.join(current) or '(none)'} "
@@ -316,8 +320,8 @@ def _sync(root, cfg, models, outcomes, write: bool):
     applied = status.apply_status_fixes(models, issues)
     touched = {i.path for i in applied}
     for m in models:
-        for label, current, expected in m.sync_priority_tags():
-            print(f"{m.path}: {label} priority tag {', '.join(current) or '(none)'} -> {expected or '(none)'}")
+        for line in m.sync_derived_tags():
+            print(f"{m.path}: {line}")
             touched.add(m.path)
             tag_changes += 1
     for path in sorted(touched):
@@ -351,11 +355,11 @@ def cmd_sync(args) -> int:
             for i in remaining:
                 print(f"{i.path}: {i.message}")
             if not remaining and not tag_changes:
-                print("statuses and priority tags are in sync")
+                print("statuses and derived tags are in sync")
         else:
             _print_sync(applied, remaining)
             if not applied and not remaining and not tag_changes:
-                print("statuses and priority tags are in sync")
+                print("statuses and derived tags are in sync")
             elif tag_changes and not applied:
                 print("commit the model change together with the work it records")
     return 1 if any(i.kind == "overclaim" for i in remaining) else 0
@@ -474,6 +478,102 @@ def cmd_schema(args) -> int:
     return 0
 
 
+def _cwe_ids(refs: List[str], force: bool) -> List[int]:
+    """Validate CWE references for tagging; unknown always fails, unsuitable unless forced."""
+    from threat_tdd import cwe
+
+    ids = []
+    for ref in _split(refs):
+        cid = cwe.parse_ref(ref)
+        found = cwe.problem(cid)
+        if found and (found[0] == "unknown" or not force):
+            hint = "" if found[0] == "unknown" else " (use --force to tag it anyway)"
+            raise ValueError(found[1] + hint)
+        ids.append(cid)
+    return ids
+
+
+def _apply_cwe(threat, add_ids=(), remove_ids=()):
+    from threat_tdd import cwe
+
+    keep = [t for t in threat.get("tags") or [] if not (cwe.is_cwe_tag(t) and cwe.parse_ref(t) in set(remove_ids))]
+    present = set(cwe.tag_ids({"tags": keep}))
+    threat["tags"] = keep + [cwe.tag(i) for i in add_ids if i not in present]
+    return threat
+
+
+def cmd_cwe(args) -> int:
+    from threat_tdd import cwe
+
+    if args.cwe_command == "info":
+        print(f"{cwe.version()}, {len(cwe.entries())} entries")
+        print(cwe._data()["notice"])
+        return 0
+    if args.cwe_command == "search":
+        hits = cwe.search(" ".join(args.query), args.limit, args.all)
+        if args.json:
+            _print_json([{**cwe.describe(i), "score": s} for i, s in hits])
+            return 0
+        if not hits:
+            print("no matching CWE entries; try other words, or --all to include broad and deprecated entries")
+            return 1
+        for i, _ in hits:
+            e = cwe.get(i)
+            extra = f"  [{e.get('abstraction') or e['kind']}, {e.get('usage')}]"
+            print(f"CWE-{i:<5} {e['name']}{extra}")
+        if not args.all:
+            # Say when a broad or deprecated entry matched better than what's shown.
+            floor = min(s for _, s in hits)
+            hidden = [(i, s) for i, s in cwe.search(" ".join(args.query), 5, include_all=True)
+                      if s > floor and i not in dict(hits) and cwe.get(i)["kind"] == "weakness"]
+            for i, _ in hidden[:2]:
+                print(f"(left out: {cwe.label(i)}, marked {cwe.get(i).get('usage')}; "
+                      f"`tdd cwe show {i}` lists more specific entries)")
+        return 0
+    if args.cwe_command == "show":
+        cid = cwe.parse_ref(args.id)
+        e = cwe.get(cid)
+        if e is None:
+            raise ValueError(f"CWE-{cid} is not in {cwe.version()}")
+        d = cwe.describe(cid)
+        if args.json:
+            _print_json(d)
+            return 0
+        print(f"CWE-{cid}: {e['name']}")
+        print(f"  {e.get('abstraction') or e['kind']}, status {e.get('status')}, mapping usage {e.get('usage')}")
+        if e.get("description"):
+            print(f"  {e['description']}")
+        if e.get("alternate_terms"):
+            print(f"  also known as: {'; '.join(e['alternate_terms'])}")
+        for p in e.get("parents", []):
+            print(f"  parent: {cwe.label(p)}")
+        kids = cwe.children(cid)
+        for k in kids[:15]:
+            print(f"  child:  {cwe.label(k)}")
+        if len(kids) > 15:
+            print(f"  ... {len(kids) - 15} more children")
+        found = cwe.problem(cid)
+        if found:
+            print(f"  note: {found[1]}")
+        print(f"  {cwe.url(cid)}")
+        return 0
+
+    root = _root()
+    cfg = _cfg(root)
+    m = _pick_model(root, cfg, args.file)
+    t = m.find_threat(args.threat)
+    if args.cwe_command == "add":
+        ids = _cwe_ids(args.ids, args.force)
+        _apply_cwe(t, add_ids=ids)
+    else:
+        ids = [cwe.parse_ref(r) for r in _split(args.ids)]
+        _apply_cwe(t, remove_ids=ids)
+    m.save(root)  # also refreshes the linked mitigations' derived CWE tags
+    now = [cwe.label(i) for i in cwe.tag_ids(t)]
+    print(f"T-{t.get('numericId')} in {m.path}: " + ("; ".join(now) if now else "no CWE tags"))
+    return 0
+
+
 def cmd_tag(args) -> int:
     from threat_tdd import tagging
 
@@ -558,6 +658,8 @@ def cmd_add_threat(args) -> int:
     )
     if args.strategy:
         m.set_strategy(t, args.strategy, args.strategy_reason)
+    if args.cwe:
+        _apply_cwe(t, add_ids=_cwe_ids(args.cwe, force=False))
     m.save(root)
     print(f"added T-{t['numericId']} to {m.path}: {t['statement']}")
     print("state: red (no mitigation yet). Next: tdd add-mitigation --threat "
@@ -740,6 +842,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--strategy", choices=["mitigate", "accept", "transfer", "avoid"],
                    help="risk handling strategy, recorded as a risk:<strategy> tag")
     s.add_argument("--strategy-reason", help="required for accept, transfer and avoid")
+    s.add_argument("--cwe", action="append", help="CWE id(s) for the weakness behind the threat, e.g. 639")
     s.set_defaults(func=cmd_add_threat)
 
     s = sub.add_parser("add-mitigation", help="append a mitigation, link it to threats and checks")
@@ -803,6 +906,28 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--print", action="store_true", help="print the schema")
     g.add_argument("--export", metavar="PATH", help="copy the schema to PATH (e.g. for editor validation)")
     s.set_defaults(func=cmd_schema)
+
+    s = sub.add_parser("cwe", help="look up CWE weaknesses and tag threats with them")
+    cs = s.add_subparsers(dest="cwe_command", required=True, metavar="<cwe command>")
+    c = cs.add_parser("search", help="find CWE entries by words, e.g. `tdd cwe search idor`")
+    c.add_argument("query", nargs="+")
+    c.add_argument("--limit", type=int, default=10)
+    c.add_argument("--all", action="store_true", help="include broad, prohibited and deprecated entries")
+    c.add_argument("--json", action="store_true")
+    c = cs.add_parser("show", help="details, parents and children of one entry")
+    c.add_argument("id")
+    c.add_argument("--json", action="store_true")
+    c = cs.add_parser("add", help="tag a threat with CWE ids")
+    c.add_argument("--file")
+    c.add_argument("--threat", required=True)
+    c.add_argument("ids", nargs="+")
+    c.add_argument("--force", action="store_true", help="allow deprecated or too-broad entries")
+    c = cs.add_parser("remove", help="remove CWE tags from a threat")
+    c.add_argument("--file")
+    c.add_argument("--threat", required=True)
+    c.add_argument("ids", nargs="+")
+    cs.add_parser("info", help="dictionary version and MITRE's terms")
+    s.set_defaults(func=cmd_cwe)
 
     s = sub.add_parser("tag", help="git-tag the commits that resolved mitigations")
     s.add_argument("--head", default="HEAD")

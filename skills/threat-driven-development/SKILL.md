@@ -96,6 +96,29 @@ mitigation with no prioritized threat gets no tag. The tag is derived: `tdd` set
 and `tdd sync --no-checks` repairs it after hand edits. Don't set it yourself. Change the threat's
 Priority, then sync. A stale tag is lint error TDD150. Work on `priority:high` mitigations first.
 
+## Weaknesses (CWE)
+
+Tag each threat with the weakness that makes it possible, from the CWE dictionary bundled with
+the plugin (MITRE CWE, `tdd cwe info` shows the version):
+
+```
+tdd cwe search idor                      # find candidates; never write a CWE id from memory
+tdd cwe show 639                         # check the definition, parents and children
+tdd cwe add --threat T-4 639             # or: tdd add-threat ... --cwe 639
+```
+
+- **Pick specific entries.** Prefer Base or Variant entries that MITRE marks Allowed. Search
+  leaves out broad Pillars and Classes, groupings, views and deprecated entries, and
+  `tdd cwe add` refuses them unless `--force`. If search says it left one out, run
+  `tdd cwe show` on it to find a specific child.
+- **One or two CWEs that explain the cause.** Don't add every loosely related entry.
+- **Some threats have none.** Process threats (a vague declaration, a skipped review) often have
+  no honest CWE. Leave them untagged; lint TDD163 is only a warning.
+- **Mitigations get CWE tags from their linked threats**, the same way they get priority. Don't
+  set those by hand.
+- **Lint:** an unknown CWE is error TDD160. Deprecated is TDD161 and too broad is TDD162, both
+  warnings. A stale mitigation CWE tag is error TDD151 (`tdd sync --no-checks` fixes it).
+
 ## Schema and lint
 
 `tdd lint` validates every model against the official Threat Composer JSON Schema (vendored with
@@ -166,4 +189,5 @@ tdd check [--threat T-n]           run linked checks
 tdd link --mitigation M-2 --threat T-5 --check name
 tdd fmt [--check]                  rewrite models exactly as the Threat Composer editor saves them
 tdd tag [--base REV | --all] [--dry-run]  git-tag commits that resolved mitigations
+tdd cwe search <words> | show <id> | add --threat T-n <id> | remove --threat T-n <id> | info
 ```

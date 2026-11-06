@@ -200,6 +200,32 @@ Mitigation id: 3b1c2a4e-5d6f-4a7b-8c9d-0e1f2a3b4c5d
 CI reads policy from the **base** branch, so a PR cannot loosen its own gate. Check definitions
 come from the head so new checks can land with the code they test.
 
+## Weaknesses (CWE)
+
+Threats are tagged with the weakness that makes them possible, from the MITRE CWE list bundled
+with the plugin (version 5.0, trimmed to about 400 KB; see `threat_tdd/data/CWE-TERMS.md`):
+
+```console
+$ tdd cwe search idor
+CWE-639   Authorization Bypass Through User-Controlled Key  [Base, Allowed]
+$ tdd cwe add --threat T-4 639
+T-4 in threats/billing.tc.json: CWE-639: Authorization Bypass Through User-Controlled Key
+```
+
+- **Validation.** CWE ids are checked against the dictionary, so an agent can't invent one. An
+  unknown id is lint error TDD160.
+- **MITRE's guidance on specificity.** Deprecated entries (TDD161) and broad entries that MITRE
+  marks Discouraged or Prohibited for mapping (TDD162, e.g. CWE-20 or CWE-284) are flagged, with
+  more specific children suggested. Search leaves them out unless you pass `--all`, and
+  `tdd cwe add` refuses them without `--force`.
+- **Mitigations inherit.** A mitigation carries the CWE tags of the threats it's linked to,
+  derived like its priority tag (TDD151 if stale). Its git tag message lists them.
+- **Advisory, not a gate.** A threat without a CWE is only a warning (TDD163). Process threats
+  often have no honest CWE, and a vague one is worse than none.
+- **Commands:** `tdd cwe search <words>`, `tdd cwe show <id>`,
+  `tdd cwe add|remove --threat T-n <id>`, `tdd cwe info`, and `tdd add-threat --cwe <id>`.
+- **Updating:** `scripts/build_cwe.py` rebuilds the data from MITRE's XML.
+
 ## Schema validation and lint
 
 `tdd lint` checks every model against the official Threat Composer JSON Schema (vendored in
@@ -279,6 +305,7 @@ tdd add-threat [--strategy S] | add-mitigation | link | waive | add-check
 tdd validate [PATHS]
 tdd fmt [PATHS] [--check]                write models exactly as the Threat Composer editor does
 tdd tag [--base REV | --all] [--dry-run] [--push]   git-tag commits that resolved mitigations
+tdd cwe search <words> | show <id> | add|remove --threat T-n <id> | info
 tdd hooks install|uninstall [--shared]
 ```
 

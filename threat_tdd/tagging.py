@@ -138,6 +138,10 @@ def tag_message(model: Model, mitigation: Dict) -> str:
     for t in model.linked_threats(mitigation.get("id")):
         prio = metadata_value(t, "Priority")
         lines.append(f"Threat: {threat_label(t)}{f' ({prio})' if prio else ''}: {t.get('statement', '')}")
+    from threat_tdd import cwe
+    weaknesses = cwe.tag_ids(mitigation)
+    if weaknesses:
+        lines.append("Weaknesses: " + "; ".join(cwe.label(i) for i in weaknesses))
     checks = check_names(mitigation)
     if checks:
         lines.append(f"Checks: {', '.join(checks)}")

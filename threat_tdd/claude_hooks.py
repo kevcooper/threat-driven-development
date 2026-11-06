@@ -151,7 +151,7 @@ def post_tool_use(payload: Dict[str, Any]) -> int:
         # Derived priority tags are kept current on agent edits too.
         try:
             m = parse(rel, res.text)
-            priority_changes = m.sync_priority_tags()
+            priority_changes = m.sync_derived_tags()
             if priority_changes:
                 canon, _ = canonical.canonicalize(m.data)
                 if canon is not None:
@@ -192,8 +192,8 @@ def post_tool_use(payload: Dict[str, Any]) -> int:
             "rewrite it."
             + (" Angle-bracket tags were kept as curly braces, since the editor would delete them: "
                + "; ".join(r.braced) + "." if r.braced else "")
-            + (" Mitigation priority tags were updated from their linked threats: "
-               + "; ".join(f"{l} -> {e or 'none'}" for l, _, e in priority_changes) + "."
+            + (" Mitigation tags derived from their linked threats were updated: "
+               + "; ".join(priority_changes) + "."
                if priority_changes else "")
             + " Re-read the file before editing it again.",
         }})

@@ -110,6 +110,29 @@ rename applications and the tags should stay put. That answers
   `-`, and the integer numericId, and `git check-ref-format` checks them too. Tag text goes to git on stdin. Only a push-to-main job
   gets a write token (T-12).
 
+## CWE describes the weakness; the dictionary keeps it honest
+
+Threat Composer statements describe a threat: source, action and impact. CWE describes the
+weakness that makes it possible. The two complement each other, so CWE ids attach to threats as
+tags (`CWE-639`), visible and filterable in the editor. Mitigations derive them through their
+links, like priority.
+
+The dictionary is bundled, not left to model memory, because the main risk is a confident but
+wrong id. It's MITRE's CWE list trimmed by `scripts/build_cwe.py` to id, name, kind, abstraction,
+status, MITRE's mapping usage, a short description, alternate terms, Research Concepts parents
+and deprecation pointers. That's about 400 KB, versus 19 MB of XML. MITRE's terms allow
+redistribution with their copyright notice and license, which ship in `data/CWE-TERMS.md` and
+inside `cwe.json`.
+
+The rules follow MITRE's own mapping guidance:
+- **Unknown ids are errors.**
+- **Deprecated entries** point to their replacement.
+- **Discouraged or Prohibited entries** (Pillars, many Classes, groupings, views) get a warning
+  listing usable children.
+- **A missing CWE is only a warning,** because process threats often have no honest one.
+- **Search** ranks name and alternate-term matches above description matches, and favours
+  Base and Variant entries. It hides unusable entries, and says when it hid a strong match.
+
 ## Mitigation priority is derived, not entered
 
 A mitigation's priority is the highest `Priority` among the threats it is linked to.

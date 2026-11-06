@@ -137,6 +137,8 @@ leave nothing to rewrite, `tdd` writes:
 - **Mitigation priority:** one tag `priority:high|medium|low`, the highest `Priority` of the
   linked threats (not-applicable threats excluded). It's derived and maintained by `tdd`. Threat
   Composer doesn't allow Priority metadata on mitigations, which is why it's a tag.
+- **Weakness:** threat tags like `CWE-639`, validated against the bundled CWE dictionary.
+  Mitigations carry the CWE tags of their linked threats, derived by `tdd`.
 - **Schema:** the official JSON Schema ships with the plugin (`tdd schema`). `tdd lint` checks
   against it.
 - **IDs:** `id` is a UUID and must be unique. `numericId` is the human label (`T-4`, `M-2`). The CLI

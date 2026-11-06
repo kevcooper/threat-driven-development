@@ -40,11 +40,16 @@ One of: `delta-required`, `existing-threats-affected`, `no-delta` and one senten
 ### Proposed threats
 For each, the Threat Composer grammar fields and a ready-to-run command:
 ```
-tdd add-threat --source "<threat source>" --prerequisites "<prerequisites>" \
+tdd add-threat --source "<threat source>" --prerequisites "<prerequisites>" --cwe <id> \
   --action "<threat action>" --impact "<threat impact>" \
   --goal <confidentiality|integrity|availability> --asset "<asset>" --stride <letters> --priority <High|Medium|Low> \
   --strategy <mitigate|accept|transfer|avoid>
 ```
+For each threat, name the weakness behind it as a CWE. Find it with
+`tdd cwe search <words>` and confirm it with `tdd cwe show <id>`. Never quote a CWE id from memory.
+Prefer specific Base or Variant entries marked Allowed, and add `--cwe <id>` to the command.
+Process threats with no honest CWE can go without one.
+
 Recommend a risk handling strategy for each threat. Default to `mitigate`. Propose `accept`,
 `transfer` or `avoid` only with a specific reason the user can approve (who carries a transferred
 risk, why residual risk is acceptable, what design change avoids it). Keep all text free of `&` and

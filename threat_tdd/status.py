@@ -81,6 +81,7 @@ class ThreatState:
     mitigations: List[str] = field(default_factory=list)
     declared_status: str = ""
     strategy: Optional[str] = None
+    cwes: List[str] = field(default_factory=list)
 
     def as_dict(self) -> Dict[str, object]:
         return self.__dict__.copy()
@@ -126,9 +127,11 @@ def evaluate(models: List[Model], results: Optional[Dict[str, str]], known_check
             strats = strategies(t)
             strategy = strats[0] if len(strats) == 1 and strats[0] in STRATEGIES else None
 
+            cwes = [t_ for t_ in t.get("tags") or [] if isinstance(t_, str) and t_.upper().startswith("CWE-")]
+
             def state(st: str, reason: str, failing=(), checks=()) -> None:
                 out.append(ThreatState(model.path, t["id"], label, statement, st, reason,
-                                       list(failing), list(checks), m_labels, declared, strategy))
+                                       list(failing), list(checks), m_labels, declared, strategy, cwes))
 
             if declared == NOT_USEFUL:
                 if comments(t):

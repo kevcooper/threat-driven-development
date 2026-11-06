@@ -12,7 +12,8 @@ Use the `threat-driven-development` skill. The CLI is `python3 "${CLAUDE_PLUGIN_
 2. Delegate a review to the `threat-reviewer` agent, passing it the list of changed files and the
    threat model path(s). Ask it for candidate threats in Threat Composer grammar, existing threats
    the change affects, and mitigations with a concrete check for each.
-3. For each threat you accept, add it with `tdd add-threat --strategy <mitigate|accept|transfer|avoid>`
+3. For each threat you accept, find the weakness behind it with `tdd cwe search` (check it with
+   `tdd cwe show`), then add it with `tdd add-threat --cwe <id> --strategy <mitigate|accept|transfer|avoid>`
    (it starts red). Choose accept, transfer or avoid only with the user's agreement, and give a
    specific reason. For a mitigated threat, add the
    mitigation with `tdd add-mitigation --threat T-n --check <name>`. If the check does not exist,
